@@ -27,6 +27,13 @@ subprojects {
         useJUnitPlatform()
     }
 
+    tasks.withType(JavaExec).configureEach {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+        workingDir = rootProject.projectDir
+    }
+
     dependencyManagement {
         imports {
             mavenBom "org.springframework.boot:spring-boot-dependencies:3.3.5"

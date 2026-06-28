@@ -20,6 +20,21 @@ The backend starts on `http://localhost:8080`.
 
 The Gradle wrapper is configured with a Java toolchain resolver. If Java 21 is not installed locally, Gradle can download a matching JDK into its local cache during the first run.
 
+## IntelliJ
+
+Open the repository root and let IntelliJ import it as a Gradle project.
+
+Recommended settings:
+
+- Project SDK: Java 21
+- Gradle JVM: Java 21, or use the project Gradle wrapper/toolchain
+
+If IntelliJ tries to run Atlas with JetBrains Runtime 17, use the Gradle task instead:
+
+```bash
+./gradlew :atlas-core:bootRun
+```
+
 ## Frontend
 
 ```bash
