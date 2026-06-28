@@ -27,11 +27,13 @@ subprojects {
         useJUnitPlatform()
     }
 
-    tasks.withType(JavaExec).configureEach {
-        javaLauncher = javaToolchains.launcherFor {
-            languageVersion = JavaLanguageVersion.of(21)
+    pluginManager.withPlugin("org.springframework.boot") {
+        tasks.named("bootRun").configure {
+            javaLauncher = javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+            workingDir = rootProject.projectDir
         }
-        workingDir = rootProject.projectDir
     }
 
     dependencyManagement {

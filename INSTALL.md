@@ -35,6 +35,8 @@ If IntelliJ tries to run Atlas with JetBrains Runtime 17, use the Gradle task in
 ./gradlew :atlas-core:bootRun
 ```
 
+If you prefer the green run button on `AtlasApplication.java`, edit that run configuration and set the JRE to Java 21. Running it with JetBrains Runtime 17 will fail because Atlas is compiled with the Java 21 toolchain.
+
 ## Frontend
 
 ```bash
