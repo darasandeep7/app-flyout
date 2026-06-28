@@ -1,5 +1,7 @@
 package com.atlas.career.service;
 
+import com.atlas.ai.ChatRequest;
+import com.atlas.ai.ModelProvider;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.ApplicationQuestionAnswer;
 import com.atlas.career.domain.CareerPreferences;
@@ -14,9 +16,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class ApplicationPackageService {
     private final CareerRepository repository;
+    private final ModelProvider modelProvider;
 
-    public ApplicationPackageService(CareerRepository repository) {
+    public ApplicationPackageService(CareerRepository repository, ModelProvider modelProvider) {
         this.repository = repository;
+        this.modelProvider = modelProvider;
     }
 
     public boolean shouldPrepare(JobRecord job) {
@@ -43,11 +47,12 @@ public class ApplicationPackageService {
         Instant now = Instant.now();
         String id = Slug.of(job.company() + "-" + job.title() + "-" + job.id());
         String folder = "applications/" + id;
+        MasterResume masterResume = repository.masterResume();
         List<ApplicationQuestionAnswer> answers = List.of(
-                new ApplicationQuestionAnswer("Tell me about yourself.", professionalSummary(job), "Generated from job intelligence and existing profile constraints.", true),
-                new ApplicationQuestionAnswer("Why this company?", "I am interested in " + job.company() + " because the role aligns with my backend engineering strengths and the company's hiring needs. I would review company-specific details before submitting.", "Draft requiring company research review.", true),
+                new ApplicationQuestionAnswer("Tell me about yourself.", answer(job, masterResume, "Tell me about yourself.", professionalSummary(job)), "Generated from the Master Resume and job description.", true),
+                new ApplicationQuestionAnswer("Why this company?", answer(job, masterResume, "Why this company?", "I am interested in " + job.company() + " because the role aligns with my backend engineering strengths and the company's hiring needs. I would review company-specific details before submitting."), "Draft requiring company research review.", true),
                 new ApplicationQuestionAnswer("Work authorization", authorizationAnswer(job), "Generated from visa intelligence.", true),
-                new ApplicationQuestionAnswer("Salary expectations", "Open to a competitive market-aligned package based on scope, level, and total compensation.", "Reusable saved answer.", true)
+                new ApplicationQuestionAnswer("Salary expectations", answer(job, masterResume, "Salary expectations", "Open to a competitive market-aligned package based on scope, level, and total compensation."), "Reusable saved answer.", true)
         );
         String recommendation = job.intelligence() == null ? "Review" : job.intelligence().recommendation().category().name();
         int confidence = job.intelligence() == null ? job.match().overallMatch() : job.intelligence().recommendation().confidence();
@@ -75,13 +80,12 @@ public class ApplicationPackageService {
         String sourceStatus = masterResume.content().equals(MasterResume.empty().content())
                 ? "Master resume is not filled in yet. Paste the real master resume before submitting any application."
                 : "Tailoring source is the saved Master Resume. Do not add experience outside that source.";
-        return """
+        String fallback = """
                 # Tailored Resume Draft
 
                 Role: %s
                 Company: %s
 
-                This draft is intentionally conservative. Atlas may reorder, rephrase, highlight, and optimize existing experience, but must never invent experience.
                 %s
 
                 ## Target Signals
@@ -92,20 +96,35 @@ public class ApplicationPackageService {
                 - Backend Match: %d
                 - Visa Match: %d
 
-                ## Review Checklist
-
-                - Confirm all bullets come from the master resume.
-                - Add only true quantified impact.
-                - Keep wording ATS-friendly.
-
                 ## Master Resume Source
 
                 %s
                 """.formatted(job.title(), job.company(), sourceStatus, job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch(), masterResume.content());
+        if (masterResume.content().equals(MasterResume.empty().content())) {
+            return fallback;
+        }
+        return generate("""
+                You are tailoring Sandeep's resume for a job application.
+                Use ONLY facts from the Master Resume.
+                Never invent employers, titles, tools, metrics, dates, projects, education, certifications, or experience.
+                You may reorder, rephrase, highlight, and optimize for ATS.
+                Return a complete ATS-friendly resume in Markdown.
+
+                Job:
+                Company: %s
+                Title: %s
+                Location: %s
+                Description:
+                %s
+
+                Master Resume:
+                %s
+                """.formatted(job.company(), job.title(), job.location(), job.description(), masterResume.content()), fallback);
     }
 
     public String coverLetterMarkdown(JobRecord job) {
-        return """
+        MasterResume masterResume = repository.masterResume();
+        String fallback = """
                 # Cover Letter Draft
 
                 Dear Hiring Team,
@@ -117,6 +136,53 @@ public class ApplicationPackageService {
                 Sincerely,
                 Sandeep
                 """.formatted(job.title(), job.company());
+        if (masterResume.content().equals(MasterResume.empty().content())) {
+            return fallback;
+        }
+        return generate("""
+                Write a concise cover letter for Sandeep.
+                Use ONLY facts from the Master Resume and job description.
+                Do not invent company facts, career history, metrics, or experience.
+                Keep it professional, specific to the role, and under 300 words.
+                Return Markdown.
+
+                Company: %s
+                Role: %s
+                Job Description:
+                %s
+
+                Master Resume:
+                %s
+                """.formatted(job.company(), job.title(), job.description(), masterResume.content()), fallback);
+    }
+
+    private String answer(JobRecord job, MasterResume masterResume, String question, String fallback) {
+        if (masterResume.content().equals(MasterResume.empty().content())) {
+            return fallback;
+        }
+        return generate("""
+                Draft an application answer for Sandeep.
+                Use ONLY facts from the Master Resume and job description.
+                Never invent experience.
+                Keep the answer direct and editable.
+
+                Question: %s
+                Company: %s
+                Role: %s
+                Job Description:
+                %s
+
+                Master Resume:
+                %s
+                """.formatted(question, job.company(), job.title(), job.description(), masterResume.content()), fallback);
+    }
+
+    private String generate(String prompt, String fallback) {
+        var response = modelProvider.generate(new ChatRequest(null, prompt, java.util.Map.of("temperature", 0.2)));
+        if (response.fallback() || response.text() == null || response.text().isBlank()) {
+            return fallback + "\n\n_AI fallback: " + (response.error() == null ? "Ollama unavailable." : response.error()) + "_";
+        }
+        return response.text().trim();
     }
 
     public String reportMarkdown(JobRecord job, ApplicationPackage applicationPackage) {

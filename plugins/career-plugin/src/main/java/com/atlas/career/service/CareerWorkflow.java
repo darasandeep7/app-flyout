@@ -252,8 +252,11 @@ public class CareerWorkflow {
 
     public ApplicationPackage prepareApplication(JobRecord job) {
         ApplicationPackage applicationPackage = applicationPackageService.create(job);
-        repository.writeApplicationText(applicationPackage, applicationPackage.resumePath(), applicationPackageService.resumeMarkdown(job));
-        repository.writeApplicationText(applicationPackage, applicationPackage.coverLetterPath(), applicationPackageService.coverLetterMarkdown(job));
+        String resume = applicationPackageService.resumeMarkdown(job);
+        String coverLetter = applicationPackageService.coverLetterMarkdown(job);
+        repository.writeApplicationText(applicationPackage, applicationPackage.resumePath(), resume);
+        repository.writeApplicationText(applicationPackage, "resumes/generated/" + applicationPackage.resumeVersion() + ".md", resume);
+        repository.writeApplicationText(applicationPackage, applicationPackage.coverLetterPath(), coverLetter);
         repository.writeApplicationArtifact(applicationPackage, applicationPackage.answersPath(), applicationPackage.answers());
         repository.writeApplicationText(applicationPackage, applicationPackage.reportPath(), applicationPackageService.reportMarkdown(job, applicationPackage));
         return repository.saveApplication(applicationPackage);
