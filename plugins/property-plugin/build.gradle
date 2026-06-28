@@ -4,6 +4,6 @@ dependencies {
     implementation project(":atlas-browser")
     implementation project(":atlas-memory")
     implementation project(":atlas-storage")
-    implementation "org.springframework.boot:spring-boot-starter"
+    implementation "org.springframework.boot:spring-boot-starter-web"
     implementation "com.fasterxml.jackson.core:jackson-databind"
 }

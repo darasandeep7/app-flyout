@@ -16,8 +16,4 @@ else
   echo "Ollama not found. Install Ollama to enable local model execution."
 fi
 
-if [ -x "./gradlew" ]; then
-  ./gradlew :atlas-core:bootRun
-else
-  echo "Gradle wrapper is not present. Install Gradle or add the wrapper, then run: gradle :atlas-core:bootRun"
-fi
+./gradlew :atlas-core:bootRun

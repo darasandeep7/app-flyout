@@ -15,6 +15,8 @@
 - Property Plugin writes JSON, Markdown, a simple PDF brochure, and a zipped project package.
 - React/Vite/Tailwind UI scaffold.
 - Startup script and install guide.
+- Gradle wrapper files so the project does not require a global Gradle install.
+- Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.
 
 ## Extension Points
 
@@ -26,5 +28,5 @@
 
 ## Known Local Environment Gaps
 
-- This shell currently has Java 17, while Atlas targets Java 21.
-- `node` and `gradle` are not currently available in `PATH`.
+- This shell currently launches with Java 17; Gradle is configured to resolve a Java 21 toolchain.
+- `node` is not currently available in `PATH`.

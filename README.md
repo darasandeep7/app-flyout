@@ -33,7 +33,21 @@ flowchart LR
 
 ## Local Run
 
-See [INSTALL.md](/Users/sdara/Documents/Codex/2026-06-27/atlas-ai-autonomous-development-prompt-you/INSTALL.md).
+See [INSTALL.md](INSTALL.md).
+
+Backend:
+
+```bash
+./gradlew :atlas-core:bootRun
+```
+
+Frontend:
+
+```bash
+cd atlas-ui
+npm install
+npm run dev
+```
 
 ## API
 

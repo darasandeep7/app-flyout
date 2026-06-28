@@ -61,7 +61,7 @@ public class OllamaModelProvider implements ModelProvider, ModelCatalog {
                     .body(payload)
                     .retrieve()
                     .body(Map.class);
-            String text = raw == null ? "" : String.valueOf(raw.getOrDefault("response", ""));
+            String text = raw == null || !raw.containsKey("response") ? "" : String.valueOf(raw.get("response"));
             return new ChatResponse(model, text, Duration.between(started, Instant.now()), normalizeRaw(raw), false, null);
         } catch (RuntimeException ex) {
             return new ChatResponse(model, "Ollama is not reachable. Start Ollama and retry.", Duration.between(started, Instant.now()), Map.of(), true, ex.getMessage());

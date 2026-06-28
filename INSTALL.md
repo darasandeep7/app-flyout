@@ -5,7 +5,6 @@ Atlas AI is designed to run locally on one machine.
 ## Requirements
 
 - Java 21
-- Gradle 8+
 - Node.js 20+
 - Python 3.11+
 - Ollama
@@ -14,10 +13,12 @@ Atlas AI is designed to run locally on one machine.
 ## Backend
 
 ```bash
-gradle :atlas-core:bootRun
+./gradlew :atlas-core:bootRun
 ```
 
 The backend starts on `http://localhost:8080`.
+
+The Gradle wrapper is configured with a Java toolchain resolver. If Java 21 is not installed locally, Gradle can download a matching JDK into its local cache during the first run.
 
 ## Frontend
 
@@ -44,3 +45,9 @@ ollama list
 ```
 
 Configure defaults in `atlas-core/src/main/resources/application.yml`.
+
+## One Command Startup
+
+```bash
+./scripts/start-atlas.sh
+```
