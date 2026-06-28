@@ -11,6 +11,7 @@
 - Added Master Resume storage, version snapshots, health scoring, and UI editing.
 - Added real career page import and job discovery scanning with ATS classification and expired job cleanup.
 - Added Ollama-backed resume, cover letter, and answer generation from the Master Resume during application package preparation.
+- Added Browser Agent application execution for prepared packages with screenshots, action logs, uploads, field filling, and final-submit pauses.
 - Added Career Copilot as the primary Atlas plugin.
 - Added company knowledge base storage.
 - Added job analysis, visa intelligence, and match scoring endpoints.

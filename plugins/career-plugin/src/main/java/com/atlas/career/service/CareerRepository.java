@@ -150,6 +150,14 @@ public class CareerRepository {
         write(careerFolder.resolve("logs").resolve(fileName), value);
     }
 
+    public Path resolveCareerPath(String relativePath) {
+        Path path = careerFolder.resolve(relativePath).normalize();
+        if (!path.startsWith(careerFolder)) {
+            throw new IllegalArgumentException("Invalid career path");
+        }
+        return path;
+    }
+
     public ApplicationPackage saveApplication(ApplicationPackage applicationPackage) {
         List<ApplicationPackage> applications = new ArrayList<>(applications());
         applications.removeIf(existing -> existing.id().equals(applicationPackage.id()));
@@ -183,6 +191,12 @@ public class CareerRepository {
     public Optional<CompanyRecord> findCompany(String companyIdOrName) {
         return companies().stream()
                 .filter(company -> company.id().equals(companyIdOrName) || company.name().equalsIgnoreCase(companyIdOrName))
+                .findFirst();
+    }
+
+    public Optional<JobRecord> findJob(String jobId) {
+        return jobs().stream()
+                .filter(job -> job.id().equals(jobId))
                 .findFirst();
     }
 

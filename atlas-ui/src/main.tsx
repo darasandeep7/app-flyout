@@ -131,6 +131,16 @@ type JobDiscoveryResult = {
   messages: string[];
 };
 
+type ApplicationExecutionResult = {
+  applicationId: string;
+  status: string;
+  pauseReason: string;
+  actions: string[];
+  screenshots: string[];
+  fallback: boolean;
+  error?: string;
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
@@ -207,6 +217,7 @@ function Career() {
   const [resumeKeywords, setResumeKeywords] = useState("");
   const [companyImportText, setCompanyImportText] = useState("");
   const [scanResult, setScanResult] = useState<JobDiscoveryResult | null>(null);
+  const [executionResult, setExecutionResult] = useState<ApplicationExecutionResult | null>(null);
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
@@ -325,6 +336,13 @@ function Career() {
   async function approveApplication(applicationId: string) {
     setStatus("Approving application for Browser Agent...");
     await fetch(`/api/plugins/career/applications/${applicationId}/approve`, { method: "POST" });
+    await load();
+  }
+
+  async function executeApplication(applicationId: string) {
+    setStatus("Launching Browser Agent...");
+    const response = await fetch(`/api/plugins/career/applications/${applicationId}/execute`, { method: "POST" });
+    setExecutionResult(await response.json());
     await load();
   }
 
@@ -533,7 +551,10 @@ function Career() {
                   <div className="font-medium">{application.title}</div>
                   <div className="text-sm text-zinc-500">{application.company} - {application.status} - {application.recommendation}</div>
                 </div>
-                <button className="button" onClick={() => approveApplication(application.id)} title="Approve application"><Play size={18} />Approve</button>
+                <div className="flex gap-2">
+                  <button className="button" onClick={() => approveApplication(application.id)} title="Approve application"><Play size={18} />Approve</button>
+                  <button className="button" onClick={() => executeApplication(application.id)} title="Run browser agent"><BriefcaseBusiness size={18} />Execute</button>
+                </div>
               </div>
               <div className="mt-2 grid grid-cols-4 gap-2 text-xs text-zinc-500">
                 <span>{application.resumePath}</span>
@@ -544,6 +565,13 @@ function Career() {
             </div>
           ))}
           {applications.length === 0 && <p className="text-sm text-zinc-500">No prepared applications yet. Analyze a good job, then prepare the queue.</p>}
+          {executionResult && (
+            <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+              <div className="text-zinc-200">{executionResult.status}: {executionResult.pauseReason}</div>
+              <div className="mt-2 space-y-1 text-xs">{executionResult.actions.map((action) => <div key={action}>{action}</div>)}</div>
+              {executionResult.error && <div className="mt-2 text-xs text-red-300">{executionResult.error}</div>}
+            </div>
+          )}
         </div>
       </section>
 

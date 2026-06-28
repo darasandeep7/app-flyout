@@ -1,8 +1,11 @@
 package com.atlas.career.service;
 
+import com.atlas.browser.BrowserApplicationRequest;
+import com.atlas.browser.BrowserAutomation;
 import com.atlas.career.api.AddCompanyRequest;
 import com.atlas.career.api.AnalyzeJobRequest;
 import com.atlas.career.api.CareerDashboard;
+import com.atlas.career.domain.ApplicationExecutionResult;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
@@ -37,8 +40,9 @@ public class CareerWorkflow {
     private final ApplicationPackageService applicationPackageService;
     private final ResumeIntelligenceService resumeIntelligence;
     private final JobDiscoveryService jobDiscovery;
+    private final BrowserAutomation browserAutomation;
 
-    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService, ResumeIntelligenceService resumeIntelligence, JobDiscoveryService jobDiscovery) {
+    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService, ResumeIntelligenceService resumeIntelligence, JobDiscoveryService jobDiscovery, BrowserAutomation browserAutomation) {
         this.repository = repository;
         this.visaIntelligence = visaIntelligence;
         this.matchEngine = matchEngine;
@@ -47,6 +51,7 @@ public class CareerWorkflow {
         this.applicationPackageService = applicationPackageService;
         this.resumeIntelligence = resumeIntelligence;
         this.jobDiscovery = jobDiscovery;
+        this.browserAutomation = browserAutomation;
     }
 
     public CareerDashboard dashboard() {
@@ -284,6 +289,51 @@ public class CareerWorkflow {
                         Instant.now()
                 )))
                 .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
+    }
+
+    public ApplicationExecutionResult executeApplication(String applicationId) {
+        ApplicationPackage applicationPackage = repository.applications().stream()
+                .filter(item -> item.id().equals(applicationId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
+        JobRecord job = repository.findJob(applicationPackage.jobId())
+                .orElseThrow(() -> new IllegalArgumentException("Job not found for application package: " + applicationPackage.jobId()));
+        if (job.url() == null || job.url().isBlank()) {
+            return saveExecution(applicationPackage, "PAUSED_FOR_MANUAL_REVIEW", "Job URL is missing", List.of(), List.of(), true, "missing-job-url");
+        }
+        var result = browserAutomation.apply(new BrowserApplicationRequest(
+                job.url(),
+                repository.resolveCareerPath("applications/" + applicationPackage.id() + "/browser"),
+                repository.resolveCareerPath(applicationPackage.resumePath()),
+                repository.resolveCareerPath(applicationPackage.coverLetterPath()),
+                applicationPackage.answers().stream()
+                        .map(answer -> new BrowserApplicationRequest.QuestionAnswer(answer.question(), answer.answer()))
+                        .toList()
+        ));
+        return saveExecution(applicationPackage, result.status(), result.pauseReason(), result.actions(), result.screenshots(), result.fallback(), result.error());
+    }
+
+    private ApplicationExecutionResult saveExecution(ApplicationPackage applicationPackage, String status, String pauseReason, List<String> actions, List<java.nio.file.Path> screenshots, boolean fallback, String error) {
+        ApplicationExecutionResult execution = new ApplicationExecutionResult(applicationPackage.id(), status, pauseReason, actions, screenshots, fallback, error, Instant.now());
+        repository.writeApplicationArtifact(applicationPackage, "applications/" + applicationPackage.id() + "/browser/execution-result.json", execution);
+        repository.saveApplication(new ApplicationPackage(
+                applicationPackage.id(),
+                applicationPackage.jobId(),
+                applicationPackage.company(),
+                applicationPackage.title(),
+                status,
+                applicationPackage.recommendationConfidence(),
+                applicationPackage.recommendation(),
+                applicationPackage.resumeVersion(),
+                applicationPackage.resumePath(),
+                applicationPackage.coverLetterPath(),
+                applicationPackage.answersPath(),
+                applicationPackage.reportPath(),
+                applicationPackage.answers(),
+                applicationPackage.createdAt(),
+                Instant.now()
+        ));
+        return execution;
     }
 
     private String applicationStatus(JobIntelligence intelligence) {

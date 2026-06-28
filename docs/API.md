@@ -17,6 +17,7 @@
 - `GET /api/plugins/career/resume/health`
 - `POST /api/plugins/career/daily/run`
 - `POST /api/plugins/career/applications/{applicationId}/approve`
+- `POST /api/plugins/career/applications/{applicationId}/execute`
 - `GET /api/plugins/career/intelligence/companies`
 - `POST /api/plugins/career/intelligence/visa`
 - `POST /api/plugins/career/intelligence/rank`

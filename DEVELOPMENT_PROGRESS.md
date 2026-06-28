@@ -33,6 +33,7 @@
 - Dashboard can edit Career Preferences used by the local job copilot.
 - Real job discovery can import career pages, scan tracked companies, classify common ATS platforms, dedupe discovered jobs, remove expired scanner jobs, and store analyzed postings locally.
 - Application packages now use Ollama to tailor resumes, cover letters, and reusable answers from the Master Resume only, with conservative local fallbacks and generated resume versions saved locally.
+- Browser Agent can execute approved application packages with Playwright, upload prepared files when possible, fill obvious answer fields, save screenshots/action logs, and pause before final submission or human gates.
 - Startup script and install guide.
 - Gradle wrapper files so the project does not require a global Gradle install.
 - Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.
