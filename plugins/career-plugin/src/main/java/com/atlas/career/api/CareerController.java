@@ -2,6 +2,7 @@ package com.atlas.career.api;
 
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationPackage;
+import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.service.CareerWorkflow;
 import java.util.List;
@@ -48,6 +49,16 @@ public class CareerController {
     @GetMapping("/applications")
     public List<ApplicationPackage> applications() {
         return workflow.applications();
+    }
+
+    @GetMapping("/preferences")
+    public CareerPreferences preferences() {
+        return workflow.preferences();
+    }
+
+    @PostMapping("/preferences")
+    public CareerPreferences savePreferences(@RequestBody CareerPreferences preferences) {
+        return workflow.savePreferences(preferences);
     }
 
     @PostMapping("/daily/run")

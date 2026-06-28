@@ -4,6 +4,7 @@ import com.atlas.career.api.AddCompanyRequest;
 import com.atlas.career.api.AnalyzeJobRequest;
 import com.atlas.career.api.CareerDashboard;
 import com.atlas.career.domain.ApplicationPackage;
+import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
@@ -73,6 +74,14 @@ public class CareerWorkflow {
         return repository.applications();
     }
 
+    public CareerPreferences preferences() {
+        return repository.preferences();
+    }
+
+    public CareerPreferences savePreferences(CareerPreferences preferences) {
+        return repository.savePreferences(preferences);
+    }
+
     public CompanyRecord addCompany(AddCompanyRequest request) {
         String id = repository.companyId(request.name());
         var profile = companyIntelligence.profile(request.name(), request.careerUrl(), request.locations(), request.notes(), request.priority());
@@ -140,8 +149,13 @@ public class CareerWorkflow {
     }
 
     public List<ApplicationPackage> runDailyPreparation() {
+        CareerPreferences preferences = repository.preferences();
         return repository.jobs().stream()
                 .filter(applicationPackageService::shouldPrepare)
+                .filter(job -> !containsIgnoreCase(preferences.blacklistCompanies(), job.company()))
+                .filter(job -> job.match().overallMatch() >= preferences.minimumMatchScore())
+                .filter(job -> !preferences.visaRequired() || job.visa().score() >= 50)
+                .limit(preferences.maximumApplicationsPerDay())
                 .map(this::prepareApplication)
                 .toList();
     }
@@ -195,6 +209,13 @@ public class CareerWorkflow {
                         && job.title().equalsIgnoreCase(title)
                         && job.location().equalsIgnoreCase(location)
                         && job.applicationStatus().toLowerCase().contains("applied"));
+    }
+
+    private boolean containsIgnoreCase(List<String> values, String candidate) {
+        if (values == null || candidate == null) {
+            return false;
+        }
+        return values.stream().anyMatch(value -> candidate.equalsIgnoreCase(value));
     }
 
     private DuplicateAssessment duplicateAssessment(AnalyzeJobRequest request) {

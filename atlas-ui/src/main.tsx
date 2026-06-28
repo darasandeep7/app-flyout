@@ -97,6 +97,21 @@ type ApplicationPackage = {
   reportPath: string;
 };
 
+type CareerPreferences = {
+  preferredTitles: string[];
+  preferredSkills: string[];
+  preferredLocations: string[];
+  remotePreference: string;
+  hybridPreference: string;
+  minimumSalary: number;
+  visaRequired: boolean;
+  minimumMatchScore: number;
+  blacklistCompanies: string[];
+  whitelistCompanies: string[];
+  dailyScanTime: string;
+  maximumApplicationsPerDay: number;
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
@@ -156,19 +171,34 @@ function Career() {
   const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
   const [applications, setApplications] = useState<ApplicationPackage[]>([]);
+  const [preferences, setPreferences] = useState<CareerPreferences | null>(null);
+  const [preferredTitles, setPreferredTitles] = useState("");
+  const [preferredSkills, setPreferredSkills] = useState("");
+  const [preferredLocations, setPreferredLocations] = useState("");
+  const [blacklistCompanies, setBlacklistCompanies] = useState("");
+  const [whitelistCompanies, setWhitelistCompanies] = useState("");
+  const [minimumSalary, setMinimumSalary] = useState(0);
+  const [minimumMatchScore, setMinimumMatchScore] = useState(75);
+  const [maximumApplicationsPerDay, setMaximumApplicationsPerDay] = useState(5);
+  const [visaRequired, setVisaRequired] = useState(true);
+  const [dailyScanTime, setDailyScanTime] = useState("08:00");
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, preferenceResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
       fetch("/api/plugins/career/intelligence/recommendations"),
-      fetch("/api/plugins/career/applications")
+      fetch("/api/plugins/career/applications"),
+      fetch("/api/plugins/career/preferences")
     ]);
     setDashboard(await dashboardResponse.json());
     setBriefing(await briefingResponse.json());
     setRecommendations(await recommendationResponse.json());
     setApplications(await applicationResponse.json());
+    const loadedPreferences = await preferenceResponse.json();
+    setPreferences(loadedPreferences);
+    syncPreferenceForm(loadedPreferences);
     setStatus("Career Copilot ready");
   }
 
@@ -194,6 +224,33 @@ function Career() {
     await load();
   }
 
+  async function savePreferences() {
+    setStatus("Saving career preferences...");
+    const nextPreferences: CareerPreferences = {
+      preferredTitles: splitList(preferredTitles),
+      preferredSkills: splitList(preferredSkills),
+      preferredLocations: splitList(preferredLocations),
+      remotePreference: preferences?.remotePreference ?? "Remote preferred",
+      hybridPreference: preferences?.hybridPreference ?? "Hybrid acceptable",
+      minimumSalary,
+      visaRequired,
+      minimumMatchScore,
+      blacklistCompanies: splitList(blacklistCompanies),
+      whitelistCompanies: splitList(whitelistCompanies),
+      dailyScanTime,
+      maximumApplicationsPerDay
+    };
+    const response = await fetch("/api/plugins/career/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nextPreferences)
+    });
+    const saved = await response.json();
+    setPreferences(saved);
+    syncPreferenceForm(saved);
+    setStatus("Career preferences saved");
+  }
+
   async function approveApplication(applicationId: string) {
     setStatus("Approving application for Browser Agent...");
     await fetch(`/api/plugins/career/applications/${applicationId}/approve`, { method: "POST" });
@@ -210,6 +267,23 @@ function Career() {
     const job = await response.json();
     setSelectedJob(job);
     await load();
+  }
+
+  function syncPreferenceForm(nextPreferences: CareerPreferences) {
+    setPreferredTitles(nextPreferences.preferredTitles.join(", "));
+    setPreferredSkills(nextPreferences.preferredSkills.join(", "));
+    setPreferredLocations(nextPreferences.preferredLocations.join(", "));
+    setBlacklistCompanies(nextPreferences.blacklistCompanies.join(", "));
+    setWhitelistCompanies(nextPreferences.whitelistCompanies.join(", "));
+    setMinimumSalary(nextPreferences.minimumSalary);
+    setMinimumMatchScore(nextPreferences.minimumMatchScore);
+    setMaximumApplicationsPerDay(nextPreferences.maximumApplicationsPerDay);
+    setVisaRequired(nextPreferences.visaRequired);
+    setDailyScanTime(nextPreferences.dailyScanTime);
+  }
+
+  function splitList(value: string) {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
   }
 
   return (
@@ -232,6 +306,31 @@ function Career() {
         <Metric icon={<FileText size={18} />} label="Waiting" value={applications.filter((item) => item.status === "WAITING_FOR_REVIEW").length} />
         <Metric icon={<ShieldCheck size={18} />} label="Visa Risk" value={dashboard?.blockedByVisa ?? 0} />
       </div>
+
+      <section className="panel space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold">Career Preferences</h3>
+            <p className="mt-1 text-sm text-zinc-500">These local rules control scoring, visa filtering, and daily queue preparation.</p>
+          </div>
+          <button className="button" onClick={savePreferences} title="Save career preferences"><Settings size={18} />Save</button>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="field-label">Target Titles<input className="input mt-1 w-full" value={preferredTitles} onChange={(event) => setPreferredTitles(event.target.value)} /></label>
+          <label className="field-label">Target Skills<input className="input mt-1 w-full" value={preferredSkills} onChange={(event) => setPreferredSkills(event.target.value)} /></label>
+          <label className="field-label">Locations<input className="input mt-1 w-full" value={preferredLocations} onChange={(event) => setPreferredLocations(event.target.value)} /></label>
+          <label className="field-label">Minimum Salary<input className="input mt-1 w-full" type="number" value={minimumSalary} onChange={(event) => setMinimumSalary(Number(event.target.value))} /></label>
+          <label className="field-label">Minimum Match<input className="input mt-1 w-full" type="number" min={0} max={100} value={minimumMatchScore} onChange={(event) => setMinimumMatchScore(Number(event.target.value))} /></label>
+          <label className="field-label">Daily Application Cap<input className="input mt-1 w-full" type="number" min={1} value={maximumApplicationsPerDay} onChange={(event) => setMaximumApplicationsPerDay(Number(event.target.value))} /></label>
+          <label className="field-label">Daily Scan Time<input className="input mt-1 w-full" value={dailyScanTime} onChange={(event) => setDailyScanTime(event.target.value)} /></label>
+          <label className="field-label">Blacklist<input className="input mt-1 w-full" value={blacklistCompanies} onChange={(event) => setBlacklistCompanies(event.target.value)} /></label>
+          <label className="field-label">Whitelist<input className="input mt-1 w-full" value={whitelistCompanies} onChange={(event) => setWhitelistCompanies(event.target.value)} /></label>
+        </div>
+        <label className="flex items-center gap-3 text-sm text-zinc-300">
+          <input className="h-4 w-4 accent-cyan-400" type="checkbox" checked={visaRequired} onChange={(event) => setVisaRequired(event.target.checked)} />
+          Require visa-friendly jobs before preparing application packages
+        </label>
+      </section>
 
       <div className="grid grid-cols-3 gap-5">
         <section className="panel">

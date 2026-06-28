@@ -17,6 +17,7 @@
 - Versioned SQLite migration script for Career Intelligence tables.
 - Daily preparation workflow creates local application packages with resume draft, cover letter draft, answer drafts, and review report.
 - Application Review Queue with approval status for future Browser Agent handoff.
+- Local Career Preferences are stored under `workspace/career/preferences` and drive scoring, visa filtering, queue thresholds, company lists, and daily application caps.
 - Ollama model catalog and generation adapter with graceful fallback.
 - Browser automation interface with Python Playwright worker.
 - Local project storage under `workspace/` with SQLite project index.
@@ -28,6 +29,7 @@
 - Career-first React UI connected to Career Copilot backend endpoints.
 - Career Intelligence Dashboard with recommendation queue, company insights, visa insights, resume health, learning funnel, and job ranking table.
 - Dashboard can trigger daily queue preparation and approve application packages for the future Browser Agent.
+- Dashboard can edit Career Preferences used by the local job copilot.
 - Startup script and install guide.
 - Gradle wrapper files so the project does not require a global Gradle install.
 - Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.

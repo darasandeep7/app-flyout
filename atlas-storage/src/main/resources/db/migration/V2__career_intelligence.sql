@@ -64,5 +64,22 @@ create table if not exists career_application_packages (
   updated_at text
 );
 
+create table if not exists career_preferences (
+  id text primary key,
+  preferred_titles_json text,
+  preferred_skills_json text,
+  preferred_locations_json text,
+  remote_preference text,
+  hybrid_preference text,
+  minimum_salary integer,
+  visa_required integer,
+  minimum_match_score integer,
+  blacklist_companies_json text,
+  whitelist_companies_json text,
+  daily_scan_time text,
+  maximum_applications_per_day integer,
+  updated_at text
+);
+
 insert or ignore into career_schema_version(version, description, applied_at)
 values (2, 'career intelligence schema', datetime('now'));

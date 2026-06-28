@@ -2,6 +2,7 @@ package com.atlas.career.service;
 
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.ApplicationQuestionAnswer;
+import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.common.Slug;
 import com.atlas.recommendation.RecommendationCategory;
@@ -11,9 +12,25 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ApplicationPackageService {
+    private final CareerRepository repository;
+
+    public ApplicationPackageService(CareerRepository repository) {
+        this.repository = repository;
+    }
+
     public boolean shouldPrepare(JobRecord job) {
+        CareerPreferences preferences = repository.preferences();
+        if (containsIgnoreCase(preferences.blacklistCompanies(), job.company())) {
+            return false;
+        }
+        if (job.match().overallMatch() < preferences.minimumMatchScore()) {
+            return false;
+        }
+        if (preferences.visaRequired() && job.visa().score() < 50) {
+            return false;
+        }
         if (job.intelligence() == null || job.intelligence().recommendation() == null) {
-            return job.match().overallMatch() >= 75 && job.visa().score() >= 50;
+            return job.match().overallMatch() >= preferences.minimumMatchScore();
         }
         RecommendationCategory category = job.intelligence().recommendation().category();
         return category == RecommendationCategory.APPLY_TODAY
@@ -127,5 +144,12 @@ public class ApplicationPackageService {
             return "This role appears to contain sponsorship restrictions. Review manually before answering work authorization questions.";
         }
         return "I can discuss work authorization requirements during the process. Review this answer manually before submission.";
+    }
+
+    private boolean containsIgnoreCase(List<String> values, String candidate) {
+        if (values == null || candidate == null) {
+            return false;
+        }
+        return values.stream().anyMatch(value -> candidate.equalsIgnoreCase(value));
     }
 }

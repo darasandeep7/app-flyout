@@ -8,6 +8,8 @@
 - `GET /api/plugins/career/jobs`
 - `POST /api/plugins/career/jobs/analyze`
 - `GET /api/plugins/career/applications`
+- `GET /api/plugins/career/preferences`
+- `POST /api/plugins/career/preferences`
 - `POST /api/plugins/career/daily/run`
 - `POST /api/plugins/career/applications/{applicationId}/approve`
 - `GET /api/plugins/career/intelligence/companies`

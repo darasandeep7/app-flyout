@@ -7,6 +7,7 @@
 - Added Career Intelligence REST endpoints.
 - Added Career Intelligence Dashboard UI sections.
 - Added daily application package preparation and review queue.
+- Added local Career Preferences with UI editing and preference-aware scoring/queue preparation.
 - Added Career Copilot as the primary Atlas plugin.
 - Added company knowledge base storage.
 - Added job analysis, visa intelligence, and match scoring endpoints.

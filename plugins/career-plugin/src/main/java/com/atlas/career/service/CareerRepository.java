@@ -2,6 +2,7 @@ package com.atlas.career.service;
 
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationPackage;
+import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -41,6 +42,38 @@ public class CareerRepository {
     public List<ApplicationPackage> applications() {
         return readList(applicationsPath(), new TypeReference<>() {
         });
+    }
+
+    public CareerPreferences preferences() {
+        if (Files.notExists(preferencesPath())) {
+            CareerPreferences defaults = CareerPreferences.defaults();
+            write(preferencesPath(), defaults);
+            return defaults;
+        }
+        try {
+            return objectMapper.readValue(preferencesPath().toFile(), CareerPreferences.class);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not read " + preferencesPath(), ex);
+        }
+    }
+
+    public CareerPreferences savePreferences(CareerPreferences preferences) {
+        CareerPreferences safe = new CareerPreferences(
+                listOrDefault(preferences.preferredTitles(), CareerPreferences.defaults().preferredTitles()),
+                listOrDefault(preferences.preferredSkills(), CareerPreferences.defaults().preferredSkills()),
+                listOrDefault(preferences.preferredLocations(), CareerPreferences.defaults().preferredLocations()),
+                blankToDefault(preferences.remotePreference(), CareerPreferences.defaults().remotePreference()),
+                blankToDefault(preferences.hybridPreference(), CareerPreferences.defaults().hybridPreference()),
+                Math.max(0, preferences.minimumSalary()),
+                preferences.visaRequired(),
+                clamp(preferences.minimumMatchScore(), 0, 100),
+                listOrEmpty(preferences.blacklistCompanies()),
+                listOrEmpty(preferences.whitelistCompanies()),
+                blankToDefault(preferences.dailyScanTime(), CareerPreferences.defaults().dailyScanTime()),
+                Math.max(1, preferences.maximumApplicationsPerDay())
+        );
+        write(preferencesPath(), safe);
+        return safe;
     }
 
     public CompanyRecord saveCompany(CompanyRecord company) {
@@ -146,11 +179,16 @@ public class CareerRepository {
         return careerFolder.resolve("applications/applications.json");
     }
 
+    private Path preferencesPath() {
+        return careerFolder.resolve("preferences/preferences.json");
+    }
+
     private void initialize() {
         try {
             Files.createDirectories(careerFolder.resolve("companies"));
             Files.createDirectories(careerFolder.resolve("jobs"));
             Files.createDirectories(careerFolder.resolve("applications"));
+            Files.createDirectories(careerFolder.resolve("preferences"));
             Files.createDirectories(careerFolder.resolve("resumes"));
             Files.createDirectories(careerFolder.resolve("coverLetters"));
             Files.createDirectories(careerFolder.resolve("answers"));
@@ -194,5 +232,22 @@ public class CareerRepository {
         );
         write(companiesPath(), List.of(sample));
         write(jobsPath(), List.of());
+        write(preferencesPath(), CareerPreferences.defaults());
+    }
+
+    private List<String> listOrDefault(List<String> values, List<String> fallback) {
+        return values == null || values.isEmpty() ? fallback : values;
+    }
+
+    private List<String> listOrEmpty(List<String> values) {
+        return values == null ? List.of() : values;
+    }
+
+    private String blankToDefault(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 }
