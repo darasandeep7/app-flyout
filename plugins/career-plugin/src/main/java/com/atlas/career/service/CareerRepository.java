@@ -1,6 +1,7 @@
 package com.atlas.career.service;
 
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -37,6 +38,11 @@ public class CareerRepository {
         });
     }
 
+    public List<ApplicationPackage> applications() {
+        return readList(applicationsPath(), new TypeReference<>() {
+        });
+    }
+
     public CompanyRecord saveCompany(CompanyRecord company) {
         List<CompanyRecord> companies = new ArrayList<>(companies());
         companies.removeIf(existing -> existing.id().equals(company.id()));
@@ -53,6 +59,36 @@ public class CareerRepository {
         jobs.sort(Comparator.comparing(JobRecord::discoveredAt).reversed());
         write(jobsPath(), jobs);
         return job;
+    }
+
+    public ApplicationPackage saveApplication(ApplicationPackage applicationPackage) {
+        List<ApplicationPackage> applications = new ArrayList<>(applications());
+        applications.removeIf(existing -> existing.id().equals(applicationPackage.id()));
+        applications.add(applicationPackage);
+        applications.sort(Comparator.comparing(ApplicationPackage::createdAt).reversed());
+        write(applicationsPath(), applications);
+        return applicationPackage;
+    }
+
+    public void writeApplicationArtifact(ApplicationPackage applicationPackage, String relativePath, Object value) {
+        Path path = careerFolder.resolve(relativePath).normalize();
+        if (!path.startsWith(careerFolder)) {
+            throw new IllegalArgumentException("Invalid application artifact path");
+        }
+        write(path, value);
+    }
+
+    public void writeApplicationText(ApplicationPackage applicationPackage, String relativePath, String value) {
+        Path path = careerFolder.resolve(relativePath).normalize();
+        if (!path.startsWith(careerFolder)) {
+            throw new IllegalArgumentException("Invalid application artifact path");
+        }
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, value);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not write " + path, ex);
+        }
     }
 
     public Optional<CompanyRecord> findCompany(String companyIdOrName) {
@@ -106,11 +142,18 @@ public class CareerRepository {
         return careerFolder.resolve("jobs/jobs.json");
     }
 
+    private Path applicationsPath() {
+        return careerFolder.resolve("applications/applications.json");
+    }
+
     private void initialize() {
         try {
             Files.createDirectories(careerFolder.resolve("companies"));
             Files.createDirectories(careerFolder.resolve("jobs"));
             Files.createDirectories(careerFolder.resolve("applications"));
+            Files.createDirectories(careerFolder.resolve("resumes"));
+            Files.createDirectories(careerFolder.resolve("coverLetters"));
+            Files.createDirectories(careerFolder.resolve("answers"));
             Files.createDirectories(careerFolder.resolve("reports"));
             Files.createDirectories(careerFolder.resolve("logs"));
             seedIfEmpty();

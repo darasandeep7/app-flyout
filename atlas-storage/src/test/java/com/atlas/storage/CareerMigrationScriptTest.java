@@ -12,7 +12,7 @@ class CareerMigrationScriptTest {
         try (var stream = getClass().getResourceAsStream("/db/migration/V2__career_intelligence.sql")) {
             assertThat(stream).isNotNull();
             String sql = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-            assertThat(sql).contains("career_companies", "career_jobs", "career_schema_version");
+            assertThat(sql).contains("career_companies", "career_jobs", "career_application_packages", "career_schema_version");
         }
     }
 }

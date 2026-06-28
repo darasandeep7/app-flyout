@@ -83,6 +83,20 @@ type RecommendationView = {
   ranking?: { overallMatch: number; technicalMatch: number; visaMatch: number; interviewProbability: number; confidence: number };
 };
 
+type ApplicationPackage = {
+  id: string;
+  jobId: string;
+  company: string;
+  title: string;
+  status: string;
+  recommendationConfidence: number;
+  recommendation: string;
+  resumePath: string;
+  coverLetterPath: string;
+  answersPath: string;
+  reportPath: string;
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
@@ -141,17 +155,20 @@ function Career() {
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
   const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
+  const [applications, setApplications] = useState<ApplicationPackage[]>([]);
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
-      fetch("/api/plugins/career/intelligence/recommendations")
+      fetch("/api/plugins/career/intelligence/recommendations"),
+      fetch("/api/plugins/career/applications")
     ]);
     setDashboard(await dashboardResponse.json());
     setBriefing(await briefingResponse.json());
     setRecommendations(await recommendationResponse.json());
+    setApplications(await applicationResponse.json());
     setStatus("Career Copilot ready");
   }
 
@@ -168,6 +185,18 @@ function Career() {
     });
     setCompanyName("");
     setCareerUrl("");
+    await load();
+  }
+
+  async function runDailyPreparation() {
+    setStatus("Preparing application review queue...");
+    await fetch("/api/plugins/career/daily/run", { method: "POST" });
+    await load();
+  }
+
+  async function approveApplication(applicationId: string) {
+    setStatus("Approving application for Browser Agent...");
+    await fetch(`/api/plugins/career/applications/${applicationId}/approve`, { method: "POST" });
     await load();
   }
 
@@ -190,14 +219,17 @@ function Career() {
           <h2 className="text-3xl font-semibold">{briefing?.greeting ?? "Career Intelligence"}</h2>
           <p className="mt-2 max-w-3xl text-zinc-400">Evaluate companies, jobs, visa risk, resume health, recommendations, and application history before taking action.</p>
         </div>
-        <div className="rounded border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</div>
+        <div className="flex items-center gap-3">
+          <button className="button" onClick={runDailyPreparation} title="Prepare application queue"><ClipboardCheck size={18} />Prepare Queue</button>
+          <div className="rounded border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</div>
+        </div>
       </header>
 
       <div className="grid grid-cols-5 gap-4">
         <Metric icon={<Building2 size={18} />} label="Companies" value={dashboard?.trackedCompanies ?? 0} />
         <Metric icon={<BriefcaseBusiness size={18} />} label="Jobs" value={dashboard?.newJobs ?? 0} />
         <Metric icon={<ClipboardCheck size={18} />} label="Excellent" value={dashboard?.excellentMatches ?? 0} />
-        <Metric icon={<FileText size={18} />} label="Ready" value={dashboard?.applicationsReady ?? 0} />
+        <Metric icon={<FileText size={18} />} label="Waiting" value={applications.filter((item) => item.status === "WAITING_FOR_REVIEW").length} />
         <Metric icon={<ShieldCheck size={18} />} label="Visa Risk" value={dashboard?.blockedByVisa ?? 0} />
       </div>
 
@@ -300,6 +332,30 @@ function Career() {
           )}
         </section>
       </div>
+
+      <section className="panel">
+        <h3 className="mb-3 text-lg font-semibold">Application Review Queue</h3>
+        <div className="space-y-3">
+          {applications.map((application) => (
+            <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={application.id}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium">{application.title}</div>
+                  <div className="text-sm text-zinc-500">{application.company} - {application.status} - {application.recommendation}</div>
+                </div>
+                <button className="button" onClick={() => approveApplication(application.id)} title="Approve application"><Play size={18} />Approve</button>
+              </div>
+              <div className="mt-2 grid grid-cols-4 gap-2 text-xs text-zinc-500">
+                <span>{application.resumePath}</span>
+                <span>{application.coverLetterPath}</span>
+                <span>{application.answersPath}</span>
+                <span>{application.reportPath}</span>
+              </div>
+            </div>
+          ))}
+          {applications.length === 0 && <p className="text-sm text-zinc-500">No prepared applications yet. Analyze a good job, then prepare the queue.</p>}
+        </div>
+      </section>
 
       <section className="panel">
         <h3 className="mb-3 text-lg font-semibold">Job Ranking Table</h3>

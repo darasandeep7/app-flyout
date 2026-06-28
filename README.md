@@ -27,6 +27,8 @@ It is intentionally single-user, local, and plugin-oriented. The core platform o
 - `daily-briefing`: morning dashboard aggregation.
 - `career-learning`: application outcome statistics.
 
+Career Copilot can now prepare local application review packages containing conservative resume drafts, cover letter drafts, reusable answer drafts, and a review report. Browser automation remains intentionally gated behind explicit user approval.
+
 ## Architecture
 
 ```mermaid

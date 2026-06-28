@@ -7,6 +7,9 @@
 - `POST /api/plugins/career/companies`
 - `GET /api/plugins/career/jobs`
 - `POST /api/plugins/career/jobs/analyze`
+- `GET /api/plugins/career/applications`
+- `POST /api/plugins/career/daily/run`
+- `POST /api/plugins/career/applications/{applicationId}/approve`
 - `GET /api/plugins/career/intelligence/companies`
 - `POST /api/plugins/career/intelligence/visa`
 - `POST /api/plugins/career/intelligence/rank`

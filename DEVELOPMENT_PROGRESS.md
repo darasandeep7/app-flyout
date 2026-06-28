@@ -15,6 +15,8 @@
 - Match Engine for Java, Spring, Snowflake, backend, leadership, salary, location, visa, and interview probability scores.
 - Job Intelligence ranking, duplicate confidence, recommendation categories, daily briefing, resume health, and learning statistics endpoints.
 - Versioned SQLite migration script for Career Intelligence tables.
+- Daily preparation workflow creates local application packages with resume draft, cover letter draft, answer drafts, and review report.
+- Application Review Queue with approval status for future Browser Agent handoff.
 - Ollama model catalog and generation adapter with graceful fallback.
 - Browser automation interface with Python Playwright worker.
 - Local project storage under `workspace/` with SQLite project index.
@@ -25,6 +27,7 @@
 - React/Vite/Tailwind UI scaffold.
 - Career-first React UI connected to Career Copilot backend endpoints.
 - Career Intelligence Dashboard with recommendation queue, company insights, visa insights, resume health, learning funnel, and job ranking table.
+- Dashboard can trigger daily queue preparation and approve application packages for the future Browser Agent.
 - Startup script and install guide.
 - Gradle wrapper files so the project does not require a global Gradle install.
 - Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.

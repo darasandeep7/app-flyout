@@ -3,6 +3,7 @@ package com.atlas.career.service;
 import com.atlas.career.api.AddCompanyRequest;
 import com.atlas.career.api.AnalyzeJobRequest;
 import com.atlas.career.api.CareerDashboard;
+import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
@@ -26,13 +27,15 @@ public class CareerWorkflow {
     private final MatchEngine matchEngine;
     private final CareerIntelligenceEngine intelligenceEngine;
     private final CompanyIntelligenceService companyIntelligence;
+    private final ApplicationPackageService applicationPackageService;
 
-    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence) {
+    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService) {
         this.repository = repository;
         this.visaIntelligence = visaIntelligence;
         this.matchEngine = matchEngine;
         this.intelligenceEngine = intelligenceEngine;
         this.companyIntelligence = companyIntelligence;
+        this.applicationPackageService = applicationPackageService;
     }
 
     public CareerDashboard dashboard() {
@@ -64,6 +67,10 @@ public class CareerWorkflow {
 
     public List<JobRecord> jobs() {
         return repository.jobs();
+    }
+
+    public List<ApplicationPackage> applications() {
+        return repository.applications();
     }
 
     public CompanyRecord addCompany(AddCompanyRequest request) {
@@ -130,6 +137,46 @@ public class CareerWorkflow {
                 List.of("Analyzed locally by Career Copilot.")
         );
         return repository.saveJob(job);
+    }
+
+    public List<ApplicationPackage> runDailyPreparation() {
+        return repository.jobs().stream()
+                .filter(applicationPackageService::shouldPrepare)
+                .map(this::prepareApplication)
+                .toList();
+    }
+
+    public ApplicationPackage prepareApplication(JobRecord job) {
+        ApplicationPackage applicationPackage = applicationPackageService.create(job);
+        repository.writeApplicationText(applicationPackage, applicationPackage.resumePath(), applicationPackageService.resumeMarkdown(job));
+        repository.writeApplicationText(applicationPackage, applicationPackage.coverLetterPath(), applicationPackageService.coverLetterMarkdown(job));
+        repository.writeApplicationArtifact(applicationPackage, applicationPackage.answersPath(), applicationPackage.answers());
+        repository.writeApplicationText(applicationPackage, applicationPackage.reportPath(), applicationPackageService.reportMarkdown(job, applicationPackage));
+        return repository.saveApplication(applicationPackage);
+    }
+
+    public ApplicationPackage approveApplication(String applicationId) {
+        return repository.applications().stream()
+                .filter(applicationPackage -> applicationPackage.id().equals(applicationId))
+                .findFirst()
+                .map(applicationPackage -> repository.saveApplication(new ApplicationPackage(
+                        applicationPackage.id(),
+                        applicationPackage.jobId(),
+                        applicationPackage.company(),
+                        applicationPackage.title(),
+                        "APPROVED_FOR_BROWSER_AGENT",
+                        applicationPackage.recommendationConfidence(),
+                        applicationPackage.recommendation(),
+                        applicationPackage.resumeVersion(),
+                        applicationPackage.resumePath(),
+                        applicationPackage.coverLetterPath(),
+                        applicationPackage.answersPath(),
+                        applicationPackage.reportPath(),
+                        applicationPackage.answers(),
+                        applicationPackage.createdAt(),
+                        Instant.now()
+                )))
+                .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
     }
 
     private String applicationStatus(JobIntelligence intelligence) {

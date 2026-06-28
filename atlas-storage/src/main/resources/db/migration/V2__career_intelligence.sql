@@ -46,5 +46,23 @@ create table if not exists career_jobs (
   updated_at text
 );
 
+create table if not exists career_application_packages (
+  id text primary key,
+  job_id text not null,
+  company text not null,
+  title text not null,
+  status text not null,
+  recommendation_confidence integer,
+  recommendation text,
+  resume_version text,
+  resume_path text,
+  cover_letter_path text,
+  answers_path text,
+  report_path text,
+  answers_json text,
+  created_at text,
+  updated_at text
+);
+
 insert or ignore into career_schema_version(version, description, applied_at)
 values (2, 'career intelligence schema', datetime('now'));

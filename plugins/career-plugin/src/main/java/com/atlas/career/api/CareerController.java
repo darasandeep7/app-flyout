@@ -1,6 +1,7 @@
 package com.atlas.career.api;
 
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.service.CareerWorkflow;
 import java.util.List;
@@ -42,5 +43,20 @@ public class CareerController {
     @PostMapping("/jobs/analyze")
     public JobRecord analyzeJob(@RequestBody AnalyzeJobRequest request) {
         return workflow.analyzeJob(request);
+    }
+
+    @GetMapping("/applications")
+    public List<ApplicationPackage> applications() {
+        return workflow.applications();
+    }
+
+    @PostMapping("/daily/run")
+    public List<ApplicationPackage> runDailyPreparation() {
+        return workflow.runDailyPreparation();
+    }
+
+    @PostMapping("/applications/{applicationId}/approve")
+    public ApplicationPackage approveApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
+        return workflow.approveApplication(applicationId);
     }
 }
