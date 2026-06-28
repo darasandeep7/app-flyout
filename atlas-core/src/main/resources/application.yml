@@ -1,0 +1,26 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: atlas-ai
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+atlas:
+  workspace-folder: workspace
+  output-folder: workspace/outputs
+  prompt-folder: prompts
+  developer-mode: true
+  ollama:
+    base-url: http://localhost:11434
+    default-text-model: ""
+    default-vision-model: ""
+  browser:
+    python-path: python3
+    browser-use-entrypoint: scripts/browser_use_worker.py
+    playwright-timeout: 30000

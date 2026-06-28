@@ -1,0 +1,16 @@
+.gradle/
+build/
+out/
+.idea/
+*.iml
+node_modules/
+dist/
+atlas-ui/node_modules/
+atlas-ui/dist/
+workspace/**
+!workspace/.gitkeep
+!workspace/outputs/
+!workspace/outputs/.gitkeep
+*.log
+__pycache__/
+*.pyc

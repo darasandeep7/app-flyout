@@ -1,0 +1,25 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = "atlas-ai"
+
+include(
+        "atlas-plugin-api",
+        "atlas-core",
+        "atlas-browser",
+        "atlas-ai",
+        "atlas-memory",
+        "atlas-storage",
+        "plugins:property-plugin"
+)

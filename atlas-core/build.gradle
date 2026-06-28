@@ -1,0 +1,19 @@
+plugins {
+    id "org.springframework.boot"
+}
+
+dependencies {
+    implementation project(":atlas-plugin-api")
+    implementation project(":atlas-ai")
+    implementation project(":atlas-browser")
+    implementation project(":atlas-memory")
+    implementation project(":atlas-storage")
+    implementation project(":plugins:property-plugin")
+
+    implementation "org.springframework.boot:spring-boot-starter-actuator"
+    implementation "org.springframework.boot:spring-boot-starter-validation"
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0"
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+}
