@@ -1,6 +1,7 @@
 package com.atlas.career.service;
 
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
@@ -43,6 +44,11 @@ public class CareerRepository {
 
     public List<ApplicationPackage> applications() {
         return readList(applicationsPath(), new TypeReference<>() {
+        });
+    }
+
+    public List<ApplicationHistoryRecord> applicationHistory() {
+        return readList(applicationHistoryPath(), new TypeReference<>() {
         });
     }
 
@@ -167,6 +173,14 @@ public class CareerRepository {
         return applicationPackage;
     }
 
+    public ApplicationHistoryRecord saveApplicationHistory(ApplicationHistoryRecord record) {
+        List<ApplicationHistoryRecord> history = new ArrayList<>(applicationHistory());
+        history.add(record);
+        history.sort(Comparator.comparing(ApplicationHistoryRecord::recordedAt).reversed());
+        write(applicationHistoryPath(), history);
+        return record;
+    }
+
     public void writeApplicationArtifact(ApplicationPackage applicationPackage, String relativePath, Object value) {
         Path path = careerFolder.resolve(relativePath).normalize();
         if (!path.startsWith(careerFolder)) {
@@ -247,6 +261,10 @@ public class CareerRepository {
 
     private Path applicationsPath() {
         return careerFolder.resolve("applications/applications.json");
+    }
+
+    private Path applicationHistoryPath() {
+        return careerFolder.resolve("applications/history.json");
     }
 
     private Path preferencesPath() {

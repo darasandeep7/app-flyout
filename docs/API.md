@@ -10,6 +10,7 @@
 - `POST /api/plugins/career/jobs/analyze`
 - `POST /api/plugins/career/jobs/scan`
 - `GET /api/plugins/career/applications`
+- `GET /api/plugins/career/applications/history`
 - `GET /api/plugins/career/preferences`
 - `POST /api/plugins/career/preferences`
 - `GET /api/plugins/career/resume/master`
@@ -18,6 +19,7 @@
 - `POST /api/plugins/career/daily/run`
 - `POST /api/plugins/career/applications/{applicationId}/approve`
 - `POST /api/plugins/career/applications/{applicationId}/execute`
+- `POST /api/plugins/career/applications/{applicationId}/mark`
 - `GET /api/plugins/career/intelligence/companies`
 - `POST /api/plugins/career/intelligence/visa`
 - `POST /api/plugins/career/intelligence/rank`

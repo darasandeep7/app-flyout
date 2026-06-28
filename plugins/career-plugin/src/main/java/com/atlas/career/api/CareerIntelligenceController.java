@@ -2,6 +2,7 @@ package com.atlas.career.api;
 
 import com.atlas.briefing.DailyBriefing;
 import com.atlas.briefing.DailyBriefingService;
+import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.service.CareerWorkflow;
@@ -127,7 +128,7 @@ public class CareerIntelligenceController {
     @GetMapping("/daily-briefing")
     public DailyBriefing dailyBriefing() {
         CareerDashboard dashboard = workflow.dashboard();
-        return dailyBriefing.briefing(
+        DailyBriefing base = dailyBriefing.briefing(
                 dashboard.newJobs(),
                 dashboard.excellentMatches(),
                 (int) workflow.jobs().stream().filter(job -> job.intelligence() != null && job.intelligence().visa().visaEligible()).count(),
@@ -135,6 +136,41 @@ public class CareerIntelligenceController {
                 dashboard.topMatches().stream().map(job -> job.company() + " - " + job.title()).toList(),
                 dashboard.topCompanies().stream().map(CompanyRecord::name).toList()
         );
+        return new DailyBriefing(
+                base.greeting(),
+                base.jobsFoundToday(),
+                base.excellentMatches(),
+                base.visaFriendlyJobs(),
+                base.applicationsReady(),
+                (int) workflow.applicationHistory().stream().filter(record -> record.status().equals("INTERVIEW")).count(),
+                base.companiesRecentlyAdded(),
+                base.companiesRequiringReview(),
+                base.topRecommendedJobs(),
+                base.topCompaniesHiring(),
+                base.resumeHealth(),
+                funnel()
+        );
+    }
+
+    private CareerLearningStats funnel() {
+        List<ApplicationHistoryRecord> history = workflow.applicationHistory();
+        return new CareerLearningStats(
+                count(history, "APPLIED"),
+                0,
+                count(history, "BLOCKED"),
+                count(history, "INTERVIEW"),
+                count(history, "OFFER"),
+                count(history, "REJECTED"),
+                count(history, "GHOSTED"),
+                0,
+                (int) history.stream().map(ApplicationHistoryRecord::resumeVersion).distinct().count(),
+                (int) history.stream().map(ApplicationHistoryRecord::coverLetterPath).distinct().count(),
+                (int) history.stream().filter(record -> record.note() != null && !record.note().isBlank()).count()
+        );
+    }
+
+    private int count(List<ApplicationHistoryRecord> history, String status) {
+        return (int) history.stream().filter(record -> record.status().equals(status)).count();
     }
 
     private CompanyIntelligenceProfile profile(CompanyRecord company) {

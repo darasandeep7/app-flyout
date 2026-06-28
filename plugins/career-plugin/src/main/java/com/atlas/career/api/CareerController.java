@@ -4,6 +4,7 @@ import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationExecutionResult;
+import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.JobDiscoveryResult;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
@@ -65,6 +66,11 @@ public class CareerController {
         return workflow.applications();
     }
 
+    @GetMapping("/applications/history")
+    public List<ApplicationHistoryRecord> applicationHistory() {
+        return workflow.applicationHistory();
+    }
+
     @GetMapping("/preferences")
     public CareerPreferences preferences() {
         return workflow.preferences();
@@ -105,6 +111,14 @@ public class CareerController {
         return workflow.executeApplication(applicationId);
     }
 
+    @PostMapping("/applications/{applicationId}/mark")
+    public ApplicationHistoryRecord markApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId, @RequestBody MarkApplicationRequest request) {
+        return workflow.markApplication(applicationId, request.status(), request.note());
+    }
+
     public record ImportCompaniesRequest(String text) {
+    }
+
+    public record MarkApplicationRequest(String status, String note) {
     }
 }

@@ -141,6 +141,17 @@ type ApplicationExecutionResult = {
   error?: string;
 };
 
+type ApplicationHistoryRecord = {
+  applicationId: string;
+  jobId: string;
+  company: string;
+  title: string;
+  status: string;
+  note: string;
+  resumeVersion: string;
+  recordedAt: string;
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
@@ -201,6 +212,7 @@ function Career() {
   const [resumeHealth, setResumeHealth] = useState<ResumeHealth | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
   const [applications, setApplications] = useState<ApplicationPackage[]>([]);
+  const [applicationHistory, setApplicationHistory] = useState<ApplicationHistoryRecord[]>([]);
   const [preferences, setPreferences] = useState<CareerPreferences | null>(null);
   const [preferredTitles, setPreferredTitles] = useState("");
   const [preferredSkills, setPreferredSkills] = useState("");
@@ -221,11 +233,12 @@ function Career() {
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
       fetch("/api/plugins/career/intelligence/recommendations"),
       fetch("/api/plugins/career/applications"),
+      fetch("/api/plugins/career/applications/history"),
       fetch("/api/plugins/career/preferences"),
       fetch("/api/plugins/career/resume/master"),
       fetch("/api/plugins/career/resume/health")
@@ -234,6 +247,7 @@ function Career() {
     setBriefing(await briefingResponse.json());
     setRecommendations(await recommendationResponse.json());
     setApplications(await applicationResponse.json());
+    setApplicationHistory(await historyResponse.json());
     const loadedPreferences = await preferenceResponse.json();
     setPreferences(loadedPreferences);
     syncPreferenceForm(loadedPreferences);
@@ -343,6 +357,16 @@ function Career() {
     setStatus("Launching Browser Agent...");
     const response = await fetch(`/api/plugins/career/applications/${applicationId}/execute`, { method: "POST" });
     setExecutionResult(await response.json());
+    await load();
+  }
+
+  async function markApplication(applicationId: string, nextStatus: string, note: string) {
+    setStatus(`Marking application ${nextStatus.toLowerCase()}...`);
+    await fetch(`/api/plugins/career/applications/${applicationId}/mark`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: nextStatus, note })
+    });
     await load();
   }
 
@@ -554,6 +578,8 @@ function Career() {
                 <div className="flex gap-2">
                   <button className="button" onClick={() => approveApplication(application.id)} title="Approve application"><Play size={18} />Approve</button>
                   <button className="button" onClick={() => executeApplication(application.id)} title="Run browser agent"><BriefcaseBusiness size={18} />Execute</button>
+                  <button className="button" onClick={() => markApplication(application.id, "APPLIED", "Confirmed by Sandeep after browser review.")} title="Mark applied"><ClipboardCheck size={18} />Applied</button>
+                  <button className="button" onClick={() => markApplication(application.id, "BLOCKED", "Blocked during application workflow.")} title="Mark blocked"><ShieldCheck size={18} />Block</button>
                 </div>
               </div>
               <div className="mt-2 grid grid-cols-4 gap-2 text-xs text-zinc-500">
@@ -572,6 +598,25 @@ function Career() {
               {executionResult.error && <div className="mt-2 text-xs text-red-300">{executionResult.error}</div>}
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="panel">
+        <h3 className="mb-3 text-lg font-semibold">Recent Applications</h3>
+        <div className="space-y-3">
+          {applicationHistory.slice(0, 8).map((item) => (
+            <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={`${item.applicationId}-${item.recordedAt}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium">{item.title}</div>
+                  <div className="text-sm text-zinc-500">{item.company} - {item.status} - {item.resumeVersion}</div>
+                </div>
+                <div className="text-xs text-zinc-500">{new Date(item.recordedAt).toLocaleString()}</div>
+              </div>
+              {item.note && <p className="mt-2 text-sm text-zinc-400">{item.note}</p>}
+            </div>
+          ))}
+          {applicationHistory.length === 0 && <p className="text-sm text-zinc-500">No application history yet.</p>}
         </div>
       </section>
 

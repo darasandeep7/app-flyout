@@ -6,6 +6,7 @@ import com.atlas.career.api.AddCompanyRequest;
 import com.atlas.career.api.AnalyzeJobRequest;
 import com.atlas.career.api.CareerDashboard;
 import com.atlas.career.domain.ApplicationExecutionResult;
+import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
@@ -87,6 +88,10 @@ public class CareerWorkflow {
 
     public List<ApplicationPackage> applications() {
         return repository.applications();
+    }
+
+    public List<ApplicationHistoryRecord> applicationHistory() {
+        return repository.applicationHistory();
     }
 
     public CareerPreferences preferences() {
@@ -313,6 +318,66 @@ public class CareerWorkflow {
         return saveExecution(applicationPackage, result.status(), result.pauseReason(), result.actions(), result.screenshots(), result.fallback(), result.error());
     }
 
+    public ApplicationHistoryRecord markApplication(String applicationId, String status, String note) {
+        ApplicationPackage applicationPackage = repository.applications().stream()
+                .filter(item -> item.id().equals(applicationId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
+        String normalizedStatus = normalizeApplicationStatus(status);
+        ApplicationPackage updated = new ApplicationPackage(
+                applicationPackage.id(),
+                applicationPackage.jobId(),
+                applicationPackage.company(),
+                applicationPackage.title(),
+                normalizedStatus,
+                applicationPackage.recommendationConfidence(),
+                applicationPackage.recommendation(),
+                applicationPackage.resumeVersion(),
+                applicationPackage.resumePath(),
+                applicationPackage.coverLetterPath(),
+                applicationPackage.answersPath(),
+                applicationPackage.reportPath(),
+                applicationPackage.answers(),
+                applicationPackage.createdAt(),
+                Instant.now()
+        );
+        repository.saveApplication(updated);
+        repository.findJob(updated.jobId()).ifPresent(job -> repository.saveJob(new JobRecord(
+                job.id(),
+                job.companyId(),
+                job.company(),
+                job.title(),
+                job.location(),
+                job.url(),
+                job.description(),
+                job.visa(),
+                job.match(),
+                job.intelligence(),
+                normalizedStatus,
+                job.resumeReady(),
+                job.coverLetterReady(),
+                job.discoveredAt(),
+                Instant.now(),
+                append(job.notes(), "Application marked " + normalizedStatus + ".")
+        )));
+        ApplicationHistoryRecord record = new ApplicationHistoryRecord(
+                updated.id(),
+                updated.jobId(),
+                updated.company(),
+                updated.title(),
+                normalizedStatus,
+                note == null ? "" : note,
+                updated.resumeVersion(),
+                updated.resumePath(),
+                updated.coverLetterPath(),
+                updated.answersPath(),
+                updated.answers().stream().map(answer -> answer.question()).toList(),
+                Instant.now()
+        );
+        repository.writeApplicationArtifact(updated, "applications/" + updated.id() + "/application-history-" + record.recordedAt().toEpochMilli() + ".json", record);
+        return repository.saveApplicationHistory(record);
+    }
+
     private ApplicationExecutionResult saveExecution(ApplicationPackage applicationPackage, String status, String pauseReason, List<String> actions, List<java.nio.file.Path> screenshots, boolean fallback, String error) {
         ApplicationExecutionResult execution = new ApplicationExecutionResult(applicationPackage.id(), status, pauseReason, actions, screenshots, fallback, error, Instant.now());
         repository.writeApplicationArtifact(applicationPackage, "applications/" + applicationPackage.id() + "/browser/execution-result.json", execution);
@@ -334,6 +399,22 @@ public class CareerWorkflow {
                 Instant.now()
         ));
         return execution;
+    }
+
+    private String normalizeApplicationStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return "NEEDS_REVIEW";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "SUBMITTED", "APPLIED" -> "APPLIED";
+            case "BLOCKED" -> "BLOCKED";
+            case "WITHDRAWN" -> "WITHDRAWN";
+            case "INTERVIEW" -> "INTERVIEW";
+            case "REJECTED" -> "REJECTED";
+            case "OFFER" -> "OFFER";
+            case "GHOSTED" -> "GHOSTED";
+            default -> status.trim().toUpperCase().replace(' ', '_');
+        };
     }
 
     private String applicationStatus(JobIntelligence intelligence) {
