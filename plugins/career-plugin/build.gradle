@@ -7,6 +7,14 @@ dependencies {
     implementation project(":atlas-prompts")
     implementation project(":atlas-settings")
     implementation project(":atlas-storage")
+    implementation project(":career-intelligence")
+    implementation project(":company-intelligence")
+    implementation project(":resume-intelligence")
+    implementation project(":visa-intelligence")
+    implementation project(":job-ranking")
+    implementation project(":recommendation-engine")
+    implementation project(":daily-briefing")
+    implementation project(":career-learning")
     implementation "org.springframework.boot:spring-boot-starter-web"
     implementation "com.fasterxml.jackson.core:jackson-databind"
 }

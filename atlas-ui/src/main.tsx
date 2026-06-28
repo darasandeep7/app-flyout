@@ -48,9 +48,39 @@ type JobRecord = {
   url: string;
   visa: { score: number; confidence: number; recommendation: string; reason: string; detectedSignals: string[] };
   match: { overallMatch: number; resumeMatch: number; javaMatch: number; springMatch: number; backendMatch: number; visaMatch: number; interviewProbability: number; explanations: Record<string, string> };
+  intelligence?: JobIntelligence;
   applicationStatus: string;
   resumeReady: boolean;
   coverLetterReady: boolean;
+};
+
+type JobIntelligence = {
+  visa: { visaEligible: boolean; visaScore: number; visaConfidence: number; recommendation: string; reason: string; supportingEvidence: string[]; needsManualReview: boolean };
+  ranking: { overallMatch: number; technicalMatch: number; javaMatch: number; springMatch: number; snowflakeMatch: number; backendMatch: number; microservicesMatch: number; cloudMatch: number; leadershipMatch: number; salaryMatch: number; locationMatch: number; remoteMatch: number; visaMatch: number; careerGrowthScore: number; interviewProbability: number; confidence: number; explanations: Record<string, string> };
+  recommendation: { category: string; confidence: number; explanation: string; userOverrideAllowed: boolean };
+  duplicate: { likelyDuplicate: boolean; duplicateConfidence: number; matchingSignals: string[] };
+};
+
+type DailyBriefing = {
+  greeting: string;
+  jobsFoundToday: number;
+  excellentMatches: number;
+  visaFriendlyJobs: number;
+  applicationsReady: number;
+  companiesRequiringReview: number;
+  topRecommendedJobs: string[];
+  topCompaniesHiring: string[];
+  resumeHealth: { atsScore: number; resumeHealthScore: number; missingKeywords: string[]; strengths: string[]; improvementSuggestions: string[] };
+  applicationFunnel: { jobsApplied: number; jobsSkipped: number; interviews: number; offers: number; rejections: number; ghostedApplications: number };
+};
+
+type RecommendationView = {
+  jobId: string;
+  company: string;
+  title: string;
+  location: string;
+  recommendation?: { category: string; confidence: number; explanation: string };
+  ranking?: { overallMatch: number; technicalMatch: number; visaMatch: number; interviewProbability: number; confidence: number };
 };
 
 function App() {
@@ -109,11 +139,19 @@ function Career() {
   const [jobUrl, setJobUrl] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
+  const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
+  const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const response = await fetch("/api/plugins/career/dashboard");
-    setDashboard(await response.json());
+    const [dashboardResponse, briefingResponse, recommendationResponse] = await Promise.all([
+      fetch("/api/plugins/career/dashboard"),
+      fetch("/api/plugins/career/intelligence/daily-briefing"),
+      fetch("/api/plugins/career/intelligence/recommendations")
+    ]);
+    setDashboard(await dashboardResponse.json());
+    setBriefing(await briefingResponse.json());
+    setRecommendations(await recommendationResponse.json());
     setStatus("Career Copilot ready");
   }
 
@@ -149,8 +187,8 @@ function Career() {
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-6">
         <div>
-          <h2 className="text-3xl font-semibold">Career Copilot</h2>
-          <p className="mt-2 max-w-3xl text-zinc-400">Track companies, analyze jobs, score visa fit, and prepare application assets locally.</p>
+          <h2 className="text-3xl font-semibold">{briefing?.greeting ?? "Career Intelligence"}</h2>
+          <p className="mt-2 max-w-3xl text-zinc-400">Evaluate companies, jobs, visa risk, resume health, recommendations, and application history before taking action.</p>
         </div>
         <div className="rounded border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</div>
       </header>
@@ -161,6 +199,33 @@ function Career() {
         <Metric icon={<ClipboardCheck size={18} />} label="Excellent" value={dashboard?.excellentMatches ?? 0} />
         <Metric icon={<FileText size={18} />} label="Ready" value={dashboard?.applicationsReady ?? 0} />
         <Metric icon={<ShieldCheck size={18} />} label="Visa Risk" value={dashboard?.blockedByVisa ?? 0} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-5">
+        <section className="panel">
+          <h3 className="mb-3 text-lg font-semibold">Resume Health</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Metric label="ATS" value={`${briefing?.resumeHealth.atsScore ?? 0}%`} />
+            <Metric label="Health" value={`${briefing?.resumeHealth.resumeHealthScore ?? 0}%`} />
+          </div>
+          <p className="mt-3 text-sm text-zinc-400">Missing: {(briefing?.resumeHealth.missingKeywords ?? []).join(", ") || "None yet"}</p>
+        </section>
+        <section className="panel">
+          <h3 className="mb-3 text-lg font-semibold">Application Funnel</h3>
+          <div className="grid grid-cols-3 gap-3">
+            <Metric label="Applied" value={briefing?.applicationFunnel.jobsApplied ?? 0} />
+            <Metric label="Interviews" value={briefing?.applicationFunnel.interviews ?? 0} />
+            <Metric label="Offers" value={briefing?.applicationFunnel.offers ?? 0} />
+          </div>
+        </section>
+        <section className="panel">
+          <h3 className="mb-3 text-lg font-semibold">Visa Insights</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <Metric label="Friendly" value={briefing?.visaFriendlyJobs ?? 0} />
+            <Metric label="Review" value={briefing?.companiesRequiringReview ?? 0} />
+          </div>
+          <p className="mt-3 text-sm text-zinc-400">Every recommendation includes confidence and an override path.</p>
+        </section>
       </div>
 
       <div className="grid grid-cols-[1fr_1.2fr] gap-5">
@@ -199,16 +264,17 @@ function Career() {
 
       <div className="grid grid-cols-2 gap-5">
         <section className="panel">
-          <h3 className="mb-3 text-lg font-semibold">Top Matches</h3>
+          <h3 className="mb-3 text-lg font-semibold">Recommendation Queue</h3>
           <div className="space-y-3">
-            {(dashboard?.topMatches ?? []).map((job) => (
-              <button className="w-full rounded border border-zinc-800 bg-zinc-950 p-3 text-left hover:border-cyan-500" key={job.id} onClick={() => setSelectedJob(job)}>
+            {recommendations.map((item) => (
+              <div className="w-full rounded border border-zinc-800 bg-zinc-950 p-3 text-left" key={item.jobId}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium">{job.title}</span>
-                  <span className="text-sm text-cyan-300">{job.match.overallMatch}%</span>
+                  <span className="font-medium">{item.title}</span>
+                  <span className="text-sm text-cyan-300">{item.recommendation?.category ?? "UNSCORED"}</span>
                 </div>
-                <p className="mt-1 text-sm text-zinc-500">{job.company} - {job.location} - {job.visa.recommendation}</p>
-              </button>
+                <p className="mt-1 text-sm text-zinc-500">{item.company} - {item.location} - Overall {item.ranking?.overallMatch ?? 0}% - Visa {item.ranking?.visaMatch ?? 0}%</p>
+                <p className="mt-2 text-xs text-zinc-400">{item.recommendation?.explanation ?? "Analyze jobs to build the queue."}</p>
+              </div>
             ))}
           </div>
         </section>
@@ -227,13 +293,43 @@ function Career() {
                 <Metric label="Interview" value={`${selectedJob.match.interviewProbability}%`} />
               </div>
               <p className="text-sm text-zinc-300">{selectedJob.visa.reason}</p>
-              <pre className="max-h-56 overflow-auto rounded bg-zinc-950 p-3 text-xs text-zinc-400">{JSON.stringify(selectedJob.match.explanations, null, 2)}</pre>
+              <pre className="max-h-56 overflow-auto rounded bg-zinc-950 p-3 text-xs text-zinc-400">{JSON.stringify(selectedJob.intelligence?.ranking.explanations ?? selectedJob.match.explanations, null, 2)}</pre>
             </div>
           ) : (
             <p className="text-sm text-zinc-500">Analyze or select a job to inspect scoring.</p>
           )}
         </section>
       </div>
+
+      <section className="panel">
+        <h3 className="mb-3 text-lg font-semibold">Job Ranking Table</h3>
+        <div className="overflow-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-zinc-500">
+              <tr>
+                <th className="border-b border-zinc-800 py-2">Role</th>
+                <th className="border-b border-zinc-800 py-2">Company</th>
+                <th className="border-b border-zinc-800 py-2">Overall</th>
+                <th className="border-b border-zinc-800 py-2">Technical</th>
+                <th className="border-b border-zinc-800 py-2">Visa</th>
+                <th className="border-b border-zinc-800 py-2">Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(dashboard?.topMatches ?? []).map((job) => (
+                <tr className="text-zinc-300" key={job.id}>
+                  <td className="border-b border-zinc-900 py-2">{job.title}</td>
+                  <td className="border-b border-zinc-900 py-2">{job.company}</td>
+                  <td className="border-b border-zinc-900 py-2">{job.intelligence?.ranking.overallMatch ?? job.match.overallMatch}%</td>
+                  <td className="border-b border-zinc-900 py-2">{job.intelligence?.ranking.technicalMatch ?? job.match.resumeMatch}%</td>
+                  <td className="border-b border-zinc-900 py-2">{job.intelligence?.ranking.visaMatch ?? job.match.visaMatch}%</td>
+                  <td className="border-b border-zinc-900 py-2">{job.intelligence?.recommendation.category ?? job.applicationStatus}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,0 +1,6 @@
+dependencies {
+    implementation project(":atlas-common")
+    implementation project(":visa-intelligence")
+    implementation project(":atlas-settings")
+    implementation "org.springframework.boot:spring-boot-starter"
+}

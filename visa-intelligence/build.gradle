@@ -1,0 +1,4 @@
+dependencies {
+    implementation project(":atlas-ai")
+    implementation "org.springframework.boot:spring-boot-starter"
+}

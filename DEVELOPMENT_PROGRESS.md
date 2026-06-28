@@ -10,8 +10,11 @@
 - Property Plugin registered as the first plugin.
 - Career company knowledge base under `workspace/career/companies`.
 - Career job analysis under `workspace/career/jobs`.
+- Career Intelligence Engine modules: `career-intelligence`, `company-intelligence`, `resume-intelligence`, `visa-intelligence`, `job-ranking`, `recommendation-engine`, `daily-briefing`, and `career-learning`.
 - Visa Intelligence scoring for sponsorship restriction language.
 - Match Engine for Java, Spring, Snowflake, backend, leadership, salary, location, visa, and interview probability scores.
+- Job Intelligence ranking, duplicate confidence, recommendation categories, daily briefing, resume health, and learning statistics endpoints.
+- Versioned SQLite migration script for Career Intelligence tables.
 - Ollama model catalog and generation adapter with graceful fallback.
 - Browser automation interface with Python Playwright worker.
 - Local project storage under `workspace/` with SQLite project index.
@@ -21,6 +24,7 @@
 - Property Plugin writes JSON, Markdown, a simple PDF brochure, and a zipped project package.
 - React/Vite/Tailwind UI scaffold.
 - Career-first React UI connected to Career Copilot backend endpoints.
+- Career Intelligence Dashboard with recommendation queue, company insights, visa insights, resume health, learning funnel, and job ranking table.
 - Startup script and install guide.
 - Gradle wrapper files so the project does not require a global Gradle install.
 - Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.

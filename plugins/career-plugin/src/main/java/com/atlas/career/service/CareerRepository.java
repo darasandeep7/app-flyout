@@ -126,16 +126,27 @@ public class CareerRepository {
         CompanyRecord sample = new CompanyRecord(
                 "sample-company",
                 "Sample Company",
+                "Unknown",
+                "https://example.com",
                 "https://example.com/careers",
+                "Unknown",
                 "Unknown",
                 "Unknown",
                 "Not enough scan history yet",
                 40,
                 List.of("Remote"),
+                0,
+                0,
+                0,
+                0,
+                0,
                 1,
                 false,
                 Instant.EPOCH,
+                Instant.now(),
+                40,
                 "Replace this with a real target company.",
+                List.of(),
                 List.of("Seed record created by Atlas Career Copilot.")
         );
         write(companiesPath(), List.of(sample));

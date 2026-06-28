@@ -13,6 +13,7 @@ public record JobRecord(
         String description,
         VisaAssessment visa,
         MatchAssessment match,
+        JobIntelligence intelligence,
         String applicationStatus,
         boolean resumeReady,
         boolean coverLetterReady,

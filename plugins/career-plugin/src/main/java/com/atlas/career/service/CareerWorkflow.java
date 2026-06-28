@@ -4,9 +4,16 @@ import com.atlas.career.api.AddCompanyRequest;
 import com.atlas.career.api.AnalyzeJobRequest;
 import com.atlas.career.api.CareerDashboard;
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MatchAssessment;
 import com.atlas.career.domain.VisaAssessment;
+import com.atlas.careerintelligence.CareerIntelligenceEngine;
+import com.atlas.company.CompanyIntelligenceService;
+import com.atlas.jobranking.DuplicateAssessment;
+import com.atlas.jobranking.JobIntelligenceRequest;
+import com.atlas.recommendation.RecommendationCategory;
+import com.atlas.visa.VisaAnalysisRequest;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -17,11 +24,15 @@ public class CareerWorkflow {
     private final CareerRepository repository;
     private final VisaIntelligenceService visaIntelligence;
     private final MatchEngine matchEngine;
+    private final CareerIntelligenceEngine intelligenceEngine;
+    private final CompanyIntelligenceService companyIntelligence;
 
-    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine) {
+    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence) {
         this.repository = repository;
         this.visaIntelligence = visaIntelligence;
         this.matchEngine = matchEngine;
+        this.intelligenceEngine = intelligenceEngine;
+        this.companyIntelligence = companyIntelligence;
     }
 
     public CareerDashboard dashboard() {
@@ -57,19 +68,31 @@ public class CareerWorkflow {
 
     public CompanyRecord addCompany(AddCompanyRequest request) {
         String id = repository.companyId(request.name());
+        var profile = companyIntelligence.profile(request.name(), request.careerUrl(), request.locations(), request.notes(), request.priority());
         CompanyRecord company = new CompanyRecord(
                 id,
                 request.name(),
-                request.careerUrl(),
                 "Unknown",
-                "Tracked",
-                "Learning from future scans",
-                45,
-                request.locations() == null ? List.of() : request.locations(),
+                profile.website(),
+                request.careerUrl(),
+                profile.knownAtsPlatform(),
+                profile.remotePolicy(),
+                "Unknown",
+                profile.historicalSponsorship(),
+                profile.visaSponsorshipConfidence(),
+                profile.locations(),
+                profile.historicalApplications(),
+                profile.historicalInterviews(),
+                profile.historicalRejections(),
+                profile.historicalOffers(),
+                profile.averageMatchScore(),
                 request.priority(),
                 false,
                 Instant.EPOCH,
+                profile.lastUpdated(),
+                profile.confidenceScore(),
                 request.notes(),
+                profile.technologyStack(),
                 List.of("Company added manually.")
         );
         return repository.saveCompany(company);
@@ -79,6 +102,14 @@ public class CareerWorkflow {
         CompanyRecord company = repository.findCompany(request.companyId() == null || request.companyId().isBlank() ? request.company() : request.companyId()).orElse(null);
         VisaAssessment visa = visaIntelligence.assess(request.description(), company);
         MatchAssessment match = matchEngine.score(request.title(), request.location(), request.description(), request.salary(), visa);
+        var intelligence = intelligenceEngine.evaluate(
+                new VisaAnalysisRequest(request.company(), request.title(), request.description(), company == null ? 0 : company.visaConfidence(), company == null ? List.of() : company.learningHistory()),
+                new JobIntelligenceRequest(request.company(), request.title(), request.location(), request.salary(), remoteStatus(request.location()), Instant.now(), request.description(), List.of(), experienceLevel(request.title(), request.description()), null),
+                company != null && company.blocked(),
+                alreadyApplied(request.company(), request.title(), request.location())
+        );
+        DuplicateAssessment duplicate = duplicateAssessment(request);
+        JobIntelligence jobIntelligence = new JobIntelligence(intelligence.visa(), intelligence.ranking(), intelligence.recommendation(), duplicate);
         String companyId = company == null ? repository.companyId(request.company()) : company.id();
         JobRecord job = new JobRecord(
                 repository.jobId(request.company(), request.title(), request.location()),
@@ -90,13 +121,56 @@ public class CareerWorkflow {
                 request.description(),
                 visa,
                 match,
-                visa.score() < 40 ? "Skipped - visa risk" : "Discovered",
-                match.overallMatch() >= 75 && visa.score() >= 50,
-                match.overallMatch() >= 70 && visa.score() >= 50,
+                jobIntelligence,
+                applicationStatus(jobIntelligence),
+                jobIntelligence.ranking().overallMatch() >= 75 && jobIntelligence.visa().visaScore() >= 50,
+                jobIntelligence.ranking().overallMatch() >= 70 && jobIntelligence.visa().visaScore() >= 50,
                 Instant.now(),
                 Instant.now(),
                 List.of("Analyzed locally by Career Copilot.")
         );
         return repository.saveJob(job);
+    }
+
+    private String applicationStatus(JobIntelligence intelligence) {
+        if (intelligence.recommendation().category() == RecommendationCategory.VISA_RISK) {
+            return "Skipped - visa risk";
+        }
+        if (intelligence.recommendation().category() == RecommendationCategory.APPLY_TODAY) {
+            return "Ready to apply";
+        }
+        return "Discovered";
+    }
+
+    private boolean alreadyApplied(String company, String title, String location) {
+        return repository.jobs().stream().anyMatch(job ->
+                job.company().equalsIgnoreCase(company)
+                        && job.title().equalsIgnoreCase(title)
+                        && job.location().equalsIgnoreCase(location)
+                        && job.applicationStatus().toLowerCase().contains("applied"));
+    }
+
+    private DuplicateAssessment duplicateAssessment(AnalyzeJobRequest request) {
+        boolean duplicate = repository.jobs().stream().anyMatch(job ->
+                (request.url() != null && !request.url().isBlank() && request.url().equalsIgnoreCase(job.url()))
+                        || (job.company().equalsIgnoreCase(request.company())
+                        && job.title().equalsIgnoreCase(request.title())
+                        && job.location().equalsIgnoreCase(request.location())));
+        return new DuplicateAssessment(duplicate, duplicate ? 85 : 0, duplicate ? List.of("company", "title", "location or url") : List.of());
+    }
+
+    private String remoteStatus(String location) {
+        return location != null && location.toLowerCase().contains("remote") ? "Remote" : "Unknown";
+    }
+
+    private String experienceLevel(String title, String description) {
+        String text = ((title == null ? "" : title) + " " + (description == null ? "" : description)).toLowerCase();
+        if (text.contains("principal") || text.contains("staff") || text.contains("architect")) {
+            return "Staff+";
+        }
+        if (text.contains("senior") || text.contains("lead")) {
+            return "Senior";
+        }
+        return "Unknown";
     }
 }

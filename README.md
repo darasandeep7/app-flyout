@@ -18,6 +18,14 @@ It is intentionally single-user, local, and plugin-oriented. The core platform o
 - `atlas-ui`: React, TypeScript, Vite, Tailwind interface.
 - `plugins/career-plugin`: career assistant for companies, jobs, visa scoring, match scoring, and applications.
 - `plugins/property-plugin`: property workflow for public listing analysis.
+- `career-intelligence`: orchestrates intelligence services before recommendations are made.
+- `company-intelligence`: company profile and historical signal model.
+- `visa-intelligence`: sponsorship risk analysis with confidence and evidence.
+- `job-ranking`: job scoring and duplicate detection.
+- `recommendation-engine`: apply/skip/review recommendation categories.
+- `resume-intelligence`: resume health and ATS keyword analysis.
+- `daily-briefing`: morning dashboard aggregation.
+- `career-learning`: application outcome statistics.
 
 ## Architecture
 

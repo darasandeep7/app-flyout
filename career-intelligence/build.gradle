@@ -1,0 +1,10 @@
+dependencies {
+    implementation project(":company-intelligence")
+    implementation project(":resume-intelligence")
+    implementation project(":visa-intelligence")
+    implementation project(":job-ranking")
+    implementation project(":recommendation-engine")
+    implementation project(":daily-briefing")
+    implementation project(":career-learning")
+    implementation "org.springframework.boot:spring-boot-starter"
+}
