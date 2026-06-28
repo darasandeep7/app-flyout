@@ -4,6 +4,7 @@ import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.ApplicationQuestionAnswer;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
+import com.atlas.career.domain.MasterResume;
 import com.atlas.common.Slug;
 import com.atlas.recommendation.RecommendationCategory;
 import java.time.Instant;
@@ -70,6 +71,10 @@ public class ApplicationPackageService {
     }
 
     public String resumeMarkdown(JobRecord job) {
+        MasterResume masterResume = repository.masterResume();
+        String sourceStatus = masterResume.content().equals(MasterResume.empty().content())
+                ? "Master resume is not filled in yet. Paste the real master resume before submitting any application."
+                : "Tailoring source is the saved Master Resume. Do not add experience outside that source.";
         return """
                 # Tailored Resume Draft
 
@@ -77,6 +82,7 @@ public class ApplicationPackageService {
                 Company: %s
 
                 This draft is intentionally conservative. Atlas may reorder, rephrase, highlight, and optimize existing experience, but must never invent experience.
+                %s
 
                 ## Target Signals
 
@@ -91,7 +97,11 @@ public class ApplicationPackageService {
                 - Confirm all bullets come from the master resume.
                 - Add only true quantified impact.
                 - Keep wording ATS-friendly.
-                """.formatted(job.title(), job.company(), job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch());
+
+                ## Master Resume Source
+
+                %s
+                """.formatted(job.title(), job.company(), sourceStatus, job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch(), masterResume.content());
     }
 
     public String coverLetterMarkdown(JobRecord job) {

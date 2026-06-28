@@ -81,5 +81,14 @@ create table if not exists career_preferences (
   updated_at text
 );
 
+create table if not exists career_master_resume (
+  id text primary key,
+  content text,
+  preferred_skills_json text,
+  preferred_keywords_json text,
+  versions_json text,
+  updated_at text
+);
+
 insert or ignore into career_schema_version(version, description, applied_at)
 values (2, 'career intelligence schema', datetime('now'));

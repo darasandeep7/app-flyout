@@ -8,6 +8,7 @@ import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
+import com.atlas.career.domain.MasterResume;
 import com.atlas.career.domain.MatchAssessment;
 import com.atlas.career.domain.VisaAssessment;
 import com.atlas.careerintelligence.CareerIntelligenceEngine;
@@ -15,6 +16,9 @@ import com.atlas.company.CompanyIntelligenceService;
 import com.atlas.jobranking.DuplicateAssessment;
 import com.atlas.jobranking.JobIntelligenceRequest;
 import com.atlas.recommendation.RecommendationCategory;
+import com.atlas.resume.ResumeHealth;
+import com.atlas.resume.ResumeIntelligenceService;
+import com.atlas.resume.ResumeProfile;
 import com.atlas.visa.VisaAnalysisRequest;
 import java.time.Instant;
 import java.util.Comparator;
@@ -29,14 +33,16 @@ public class CareerWorkflow {
     private final CareerIntelligenceEngine intelligenceEngine;
     private final CompanyIntelligenceService companyIntelligence;
     private final ApplicationPackageService applicationPackageService;
+    private final ResumeIntelligenceService resumeIntelligence;
 
-    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService) {
+    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService, ResumeIntelligenceService resumeIntelligence) {
         this.repository = repository;
         this.visaIntelligence = visaIntelligence;
         this.matchEngine = matchEngine;
         this.intelligenceEngine = intelligenceEngine;
         this.companyIntelligence = companyIntelligence;
         this.applicationPackageService = applicationPackageService;
+        this.resumeIntelligence = resumeIntelligence;
     }
 
     public CareerDashboard dashboard() {
@@ -80,6 +86,24 @@ public class CareerWorkflow {
 
     public CareerPreferences savePreferences(CareerPreferences preferences) {
         return repository.savePreferences(preferences);
+    }
+
+    public MasterResume masterResume() {
+        return repository.masterResume();
+    }
+
+    public MasterResume saveMasterResume(MasterResume masterResume) {
+        return repository.saveMasterResume(masterResume);
+    }
+
+    public ResumeHealth resumeHealth() {
+        MasterResume masterResume = repository.masterResume();
+        return resumeIntelligence.health(new ResumeProfile(
+                masterResume.content(),
+                masterResume.preferredSkills(),
+                masterResume.preferredKeywords(),
+                masterResume.versions()
+        ), "");
     }
 
     public CompanyRecord addCompany(AddCompanyRequest request) {

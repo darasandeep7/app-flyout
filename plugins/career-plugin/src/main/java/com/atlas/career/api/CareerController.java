@@ -1,10 +1,12 @@
 package com.atlas.career.api;
 
-import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
+import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.JobRecord;
+import com.atlas.career.domain.MasterResume;
 import com.atlas.career.service.CareerWorkflow;
+import com.atlas.resume.ResumeHealth;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,6 +61,21 @@ public class CareerController {
     @PostMapping("/preferences")
     public CareerPreferences savePreferences(@RequestBody CareerPreferences preferences) {
         return workflow.savePreferences(preferences);
+    }
+
+    @GetMapping("/resume/master")
+    public MasterResume masterResume() {
+        return workflow.masterResume();
+    }
+
+    @PostMapping("/resume/master")
+    public MasterResume saveMasterResume(@RequestBody MasterResume masterResume) {
+        return workflow.saveMasterResume(masterResume);
+    }
+
+    @GetMapping("/resume/health")
+    public ResumeHealth resumeHealth() {
+        return workflow.resumeHealth();
     }
 
     @PostMapping("/daily/run")

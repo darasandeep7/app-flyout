@@ -74,6 +74,8 @@ type DailyBriefing = {
   applicationFunnel: { jobsApplied: number; jobsSkipped: number; interviews: number; offers: number; rejections: number; ghostedApplications: number };
 };
 
+type ResumeHealth = DailyBriefing["resumeHealth"];
+
 type RecommendationView = {
   jobId: string;
   company: string;
@@ -110,6 +112,14 @@ type CareerPreferences = {
   whitelistCompanies: string[];
   dailyScanTime: string;
   maximumApplicationsPerDay: number;
+};
+
+type MasterResume = {
+  content: string;
+  preferredSkills: string[];
+  preferredKeywords: string[];
+  versions: string[];
+  updatedAt: string;
 };
 
 function App() {
@@ -169,6 +179,7 @@ function Career() {
   const [jobDescription, setJobDescription] = useState("");
   const [selectedJob, setSelectedJob] = useState<JobRecord | null>(null);
   const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
+  const [resumeHealth, setResumeHealth] = useState<ResumeHealth | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
   const [applications, setApplications] = useState<ApplicationPackage[]>([]);
   const [preferences, setPreferences] = useState<CareerPreferences | null>(null);
@@ -182,15 +193,20 @@ function Career() {
   const [maximumApplicationsPerDay, setMaximumApplicationsPerDay] = useState(5);
   const [visaRequired, setVisaRequired] = useState(true);
   const [dailyScanTime, setDailyScanTime] = useState("08:00");
+  const [masterResume, setMasterResume] = useState<MasterResume | null>(null);
+  const [masterResumeContent, setMasterResumeContent] = useState("");
+  const [resumeKeywords, setResumeKeywords] = useState("");
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, preferenceResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
       fetch("/api/plugins/career/intelligence/recommendations"),
       fetch("/api/plugins/career/applications"),
-      fetch("/api/plugins/career/preferences")
+      fetch("/api/plugins/career/preferences"),
+      fetch("/api/plugins/career/resume/master"),
+      fetch("/api/plugins/career/resume/health")
     ]);
     setDashboard(await dashboardResponse.json());
     setBriefing(await briefingResponse.json());
@@ -199,6 +215,11 @@ function Career() {
     const loadedPreferences = await preferenceResponse.json();
     setPreferences(loadedPreferences);
     syncPreferenceForm(loadedPreferences);
+    const loadedResume = await masterResumeResponse.json();
+    setMasterResume(loadedResume);
+    setMasterResumeContent(loadedResume.content);
+    setResumeKeywords(loadedResume.preferredKeywords.join(", "));
+    setResumeHealth(await resumeHealthResponse.json());
     setStatus("Career Copilot ready");
   }
 
@@ -249,6 +270,26 @@ function Career() {
     setPreferences(saved);
     syncPreferenceForm(saved);
     setStatus("Career preferences saved");
+  }
+
+  async function saveMasterResume() {
+    setStatus("Saving master resume...");
+    const response = await fetch("/api/plugins/career/resume/master", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: masterResumeContent,
+        preferredSkills: preferences?.preferredSkills ?? [],
+        preferredKeywords: splitList(resumeKeywords),
+        versions: masterResume?.versions ?? [],
+        updatedAt: masterResume?.updatedAt ?? new Date().toISOString()
+      })
+    });
+    const saved = await response.json();
+    setMasterResume(saved);
+    setMasterResumeContent(saved.content);
+    setResumeKeywords(saved.preferredKeywords.join(", "));
+    await load();
   }
 
   async function approveApplication(applicationId: string) {
@@ -336,10 +377,19 @@ function Career() {
         <section className="panel">
           <h3 className="mb-3 text-lg font-semibold">Resume Health</h3>
           <div className="grid grid-cols-2 gap-3">
-            <Metric label="ATS" value={`${briefing?.resumeHealth.atsScore ?? 0}%`} />
-            <Metric label="Health" value={`${briefing?.resumeHealth.resumeHealthScore ?? 0}%`} />
+            <Metric label="ATS" value={`${resumeHealth?.atsScore ?? 0}%`} />
+            <Metric label="Health" value={`${resumeHealth?.resumeHealthScore ?? 0}%`} />
           </div>
-          <p className="mt-3 text-sm text-zinc-400">Missing: {(briefing?.resumeHealth.missingKeywords ?? []).join(", ") || "None yet"}</p>
+          <p className="mt-3 text-sm text-zinc-400">Missing: {(resumeHealth?.missingKeywords ?? []).join(", ") || "None yet"}</p>
+        </section>
+        <section className="panel space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold">Master Resume</h3>
+            <button className="button" onClick={saveMasterResume} title="Save master resume"><FileText size={18} />Save</button>
+          </div>
+          <textarea className="input min-h-36 w-full py-3" value={masterResumeContent} onChange={(event) => setMasterResumeContent(event.target.value)} />
+          <input className="input w-full" value={resumeKeywords} onChange={(event) => setResumeKeywords(event.target.value)} placeholder="Preferred resume keywords" />
+          <p className="text-xs text-zinc-500">Versions saved: {masterResume?.versions.length ?? 0}. Atlas can tailor only from this resume.</p>
         </section>
         <section className="panel">
           <h3 className="mb-3 text-lg font-semibold">Application Funnel</h3>

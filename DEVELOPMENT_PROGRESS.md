@@ -18,6 +18,7 @@
 - Daily preparation workflow creates local application packages with resume draft, cover letter draft, answer drafts, and review report.
 - Application Review Queue with approval status for future Browser Agent handoff.
 - Local Career Preferences are stored under `workspace/career/preferences` and drive scoring, visa filtering, queue thresholds, company lists, and daily application caps.
+- Master Resume storage is available under `workspace/career/resumes` with version snapshots and resume health scoring.
 - Ollama model catalog and generation adapter with graceful fallback.
 - Browser automation interface with Python Playwright worker.
 - Local project storage under `workspace/` with SQLite project index.

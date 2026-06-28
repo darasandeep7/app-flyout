@@ -4,6 +4,7 @@ import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
+import com.atlas.career.domain.MasterResume;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Repository;
 
@@ -74,6 +76,43 @@ public class CareerRepository {
         );
         write(preferencesPath(), safe);
         return safe;
+    }
+
+    public MasterResume masterResume() {
+        if (Files.notExists(masterResumePath())) {
+            MasterResume empty = MasterResume.empty();
+            write(masterResumePath(), empty);
+            return empty;
+        }
+        try {
+            MasterResume saved = objectMapper.readValue(masterResumePath().toFile(), MasterResume.class);
+            return new MasterResume(
+                    saved.content(),
+                    listOrDefault(saved.preferredSkills(), MasterResume.empty().preferredSkills()),
+                    listOrDefault(saved.preferredKeywords(), MasterResume.empty().preferredKeywords()),
+                    resumeVersions(),
+                    saved.updatedAt() == null ? Instant.EPOCH : saved.updatedAt()
+            );
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not read " + masterResumePath(), ex);
+        }
+    }
+
+    public MasterResume saveMasterResume(MasterResume masterResume) {
+        MasterResume current = masterResume();
+        String content = masterResume.content() == null ? "" : masterResume.content();
+        if (!content.equals(current.content())) {
+            writeResumeVersion(current.content());
+        }
+        MasterResume saved = new MasterResume(
+                content,
+                listOrDefault(masterResume.preferredSkills(), MasterResume.empty().preferredSkills()),
+                listOrDefault(masterResume.preferredKeywords(), MasterResume.empty().preferredKeywords()),
+                resumeVersions(),
+                Instant.now()
+        );
+        write(masterResumePath(), saved);
+        return new MasterResume(saved.content(), saved.preferredSkills(), saved.preferredKeywords(), resumeVersions(), saved.updatedAt());
     }
 
     public CompanyRecord saveCompany(CompanyRecord company) {
@@ -183,6 +222,14 @@ public class CareerRepository {
         return careerFolder.resolve("preferences/preferences.json");
     }
 
+    private Path masterResumePath() {
+        return careerFolder.resolve("resumes/master-resume.json");
+    }
+
+    private Path resumeVersionsFolder() {
+        return careerFolder.resolve("resumes/versions");
+    }
+
     private void initialize() {
         try {
             Files.createDirectories(careerFolder.resolve("companies"));
@@ -190,6 +237,7 @@ public class CareerRepository {
             Files.createDirectories(careerFolder.resolve("applications"));
             Files.createDirectories(careerFolder.resolve("preferences"));
             Files.createDirectories(careerFolder.resolve("resumes"));
+            Files.createDirectories(resumeVersionsFolder());
             Files.createDirectories(careerFolder.resolve("coverLetters"));
             Files.createDirectories(careerFolder.resolve("answers"));
             Files.createDirectories(careerFolder.resolve("reports"));
@@ -233,6 +281,34 @@ public class CareerRepository {
         write(companiesPath(), List.of(sample));
         write(jobsPath(), List.of());
         write(preferencesPath(), CareerPreferences.defaults());
+        write(masterResumePath(), MasterResume.empty());
+    }
+
+    private void writeResumeVersion(String content) {
+        if (content == null || content.isBlank() || content.equals(MasterResume.empty().content())) {
+            return;
+        }
+        try {
+            Files.createDirectories(resumeVersionsFolder());
+            Files.writeString(resumeVersionsFolder().resolve("master-resume-" + Instant.now().toEpochMilli() + ".md"), content);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not write resume version", ex);
+        }
+    }
+
+    private List<String> resumeVersions() {
+        if (Files.notExists(resumeVersionsFolder())) {
+            return List.of();
+        }
+        try (Stream<Path> paths = Files.list(resumeVersionsFolder())) {
+            return paths
+                    .filter(path -> path.getFileName().toString().endsWith(".md"))
+                    .map(path -> careerFolder.relativize(path).toString())
+                    .sorted(Comparator.reverseOrder())
+                    .toList();
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not list resume versions", ex);
+        }
     }
 
     private List<String> listOrDefault(List<String> values, List<String> fallback) {

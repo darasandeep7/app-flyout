@@ -10,6 +10,9 @@
 - `GET /api/plugins/career/applications`
 - `GET /api/plugins/career/preferences`
 - `POST /api/plugins/career/preferences`
+- `GET /api/plugins/career/resume/master`
+- `POST /api/plugins/career/resume/master`
+- `GET /api/plugins/career/resume/health`
 - `POST /api/plugins/career/daily/run`
 - `POST /api/plugins/career/applications/{applicationId}/approve`
 - `GET /api/plugins/career/intelligence/companies`

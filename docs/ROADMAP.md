@@ -6,6 +6,7 @@
 - Career Intelligence modules for company, visa, resume, ranking, recommendations, learning, and daily briefing.
 - Daily preparation workflow creates local application packages and queues them for review.
 - Local Career Preferences control target roles, skills, locations, salary, visa requirement, blacklists, whitelists, and daily application limits.
+- Master Resume storage provides the truthful source for future resume tailoring.
 - Property Copilot retained as a plugin.
 
 ## Next
