@@ -1,0 +1,12 @@
+dependencies {
+    implementation project(":atlas-common")
+    implementation project(":atlas-plugin-api")
+    implementation project(":atlas-ai")
+    implementation project(":atlas-browser")
+    implementation project(":atlas-memory")
+    implementation project(":atlas-prompts")
+    implementation project(":atlas-settings")
+    implementation project(":atlas-storage")
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation "com.fasterxml.jackson.core:jackson-databind"
+}

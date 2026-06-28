@@ -3,11 +3,15 @@ plugins {
 }
 
 dependencies {
+    implementation project(":atlas-common")
     implementation project(":atlas-plugin-api")
+    implementation project(":atlas-prompts")
+    implementation project(":atlas-settings")
     implementation project(":atlas-ai")
     implementation project(":atlas-browser")
     implementation project(":atlas-memory")
     implementation project(":atlas-storage")
+    implementation project(":plugins:career-plugin")
     implementation project(":plugins:property-plugin")
 
     implementation "org.springframework.boot:spring-boot-starter-actuator"

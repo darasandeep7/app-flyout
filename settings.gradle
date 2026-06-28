@@ -19,11 +19,15 @@ dependencyResolutionManagement {
 rootProject.name = "atlas-ai"
 
 include(
+        "atlas-common",
         "atlas-plugin-api",
+        "atlas-prompts",
+        "atlas-settings",
         "atlas-core",
         "atlas-browser",
         "atlas-ai",
         "atlas-memory",
         "atlas-storage",
+        "plugins:career-plugin",
         "plugins:property-plugin"
 )

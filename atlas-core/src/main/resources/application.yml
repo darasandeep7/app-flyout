@@ -24,3 +24,17 @@ atlas:
     python-path: python3
     browser-use-entrypoint: scripts/browser_use_worker.py
     playwright-timeout: 30000
+  career:
+    visa-required: true
+    preferred-locations:
+      - Remote
+      - Dallas
+      - Chicago
+    target-skills:
+      - Java
+      - Spring
+      - Backend
+      - Snowflake
+      - Leadership
+    minimum-match-score: 70
+    daily-scan-cron: "0 0 8 * * *"
