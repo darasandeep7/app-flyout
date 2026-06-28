@@ -15,8 +15,12 @@ public class CareerScheduler {
     }
 
     @Scheduled(cron = "${atlas.career.daily-scan-cron:0 0 8 * * *}")
-    public void dailyScanPlaceholder() {
-        int companies = workflow.companies().size();
-        log.info("Career Copilot daily scan placeholder checked {} tracked companies", companies);
+    public void dailyScan() {
+        var result = workflow.scanCompanies();
+        var packages = workflow.runDailyPreparation();
+        log.info("Career Copilot daily scan checked {} companies, found {} jobs, prepared {} packages",
+                result.companiesScanned(),
+                result.jobsFound(),
+                packages.size());
     }
 }

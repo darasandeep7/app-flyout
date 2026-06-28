@@ -31,6 +31,7 @@
 - Career Intelligence Dashboard with recommendation queue, company insights, visa insights, resume health, learning funnel, and job ranking table.
 - Dashboard can trigger daily queue preparation and approve application packages for the future Browser Agent.
 - Dashboard can edit Career Preferences used by the local job copilot.
+- Real job discovery can import career pages, scan tracked companies, classify common ATS platforms, dedupe discovered jobs, remove expired scanner jobs, and store analyzed postings locally.
 - Startup script and install guide.
 - Gradle wrapper files so the project does not require a global Gradle install.
 - Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.

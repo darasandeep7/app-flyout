@@ -133,6 +133,23 @@ public class CareerRepository {
         return job;
     }
 
+    public int removeExpiredScannerJobs(String companyId, List<String> activeUrls) {
+        List<JobRecord> jobs = new ArrayList<>(jobs());
+        int before = jobs.size();
+        jobs.removeIf(job -> companyId.equals(job.companyId())
+                && job.notes() != null
+                && job.notes().stream().anyMatch(note -> note.equalsIgnoreCase("Discovered by career page scanner."))
+                && (job.url() == null || activeUrls.stream().noneMatch(url -> url.equalsIgnoreCase(job.url()))));
+        if (jobs.size() != before) {
+            write(jobsPath(), jobs);
+        }
+        return before - jobs.size();
+    }
+
+    public void appendLog(String fileName, Object value) {
+        write(careerFolder.resolve("logs").resolve(fileName), value);
+    }
+
     public ApplicationPackage saveApplication(ApplicationPackage applicationPackage) {
         List<ApplicationPackage> applications = new ArrayList<>(applications());
         applications.removeIf(existing -> existing.id().equals(applicationPackage.id()));

@@ -122,6 +122,15 @@ type MasterResume = {
   updatedAt: string;
 };
 
+type JobDiscoveryResult = {
+  scannedAt: string;
+  companiesScanned: number;
+  jobsFound: number;
+  jobsSaved: number;
+  expiredRemoved: number;
+  messages: string[];
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
@@ -196,6 +205,8 @@ function Career() {
   const [masterResume, setMasterResume] = useState<MasterResume | null>(null);
   const [masterResumeContent, setMasterResumeContent] = useState("");
   const [resumeKeywords, setResumeKeywords] = useState("");
+  const [companyImportText, setCompanyImportText] = useState("");
+  const [scanResult, setScanResult] = useState<JobDiscoveryResult | null>(null);
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
@@ -242,6 +253,25 @@ function Career() {
   async function runDailyPreparation() {
     setStatus("Preparing application review queue...");
     await fetch("/api/plugins/career/daily/run", { method: "POST" });
+    await load();
+  }
+
+  async function importCompanies() {
+    setStatus("Importing career pages...");
+    const response = await fetch("/api/plugins/career/companies/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: companyImportText })
+    });
+    setScanResult(await response.json());
+    setCompanyImportText("");
+    await load();
+  }
+
+  async function scanJobs() {
+    setStatus("Scanning company career pages...");
+    const response = await fetch("/api/plugins/career/jobs/scan", { method: "POST" });
+    setScanResult(await response.json());
     await load();
   }
 
@@ -335,6 +365,7 @@ function Career() {
           <p className="mt-2 max-w-3xl text-zinc-400">Evaluate companies, jobs, visa risk, resume health, recommendations, and application history before taking action.</p>
         </div>
         <div className="flex items-center gap-3">
+          <button className="button" onClick={scanJobs} title="Scan company career pages"><BriefcaseBusiness size={18} />Scan Jobs</button>
           <button className="button" onClick={runDailyPreparation} title="Prepare application queue"><ClipboardCheck size={18} />Prepare Queue</button>
           <div className="rounded border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</div>
         </div>
@@ -417,6 +448,16 @@ function Career() {
             <input className="input w-full" value={careerUrl} onChange={(event) => setCareerUrl(event.target.value)} placeholder="Career URL" />
             <button className="button" onClick={addCompany} disabled={!companyName.trim()} title="Add company"><Building2 size={18} />Add Company</button>
           </div>
+          <div className="space-y-3">
+            <textarea className="input min-h-28 w-full py-3" value={companyImportText} onChange={(event) => setCompanyImportText(event.target.value)} placeholder={"Import career pages, one per line:\nCompany, https://company.com/careers\nhttps://jobs.lever.co/company"} />
+            <button className="button" onClick={importCompanies} disabled={!companyImportText.trim()} title="Import career pages"><Building2 size={18} />Import Pages</button>
+          </div>
+          {scanResult && (
+            <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+              <div className="text-zinc-200">Scanned {scanResult.companiesScanned} companies, found {scanResult.jobsFound} jobs, saved {scanResult.jobsSaved}, removed {scanResult.expiredRemoved} expired.</div>
+              <div className="mt-2 space-y-1 text-xs">{scanResult.messages.map((message) => <div key={message}>{message}</div>)}</div>
+            </div>
+          )}
           <div className="space-y-2">
             {(dashboard?.topCompanies ?? []).map((company) => (
               <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={company.id}>

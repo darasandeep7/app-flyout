@@ -6,6 +6,7 @@ import com.atlas.career.api.CareerDashboard;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.JobDiscoveryResult;
 import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
@@ -21,6 +22,7 @@ import com.atlas.resume.ResumeIntelligenceService;
 import com.atlas.resume.ResumeProfile;
 import com.atlas.visa.VisaAnalysisRequest;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -34,8 +36,9 @@ public class CareerWorkflow {
     private final CompanyIntelligenceService companyIntelligence;
     private final ApplicationPackageService applicationPackageService;
     private final ResumeIntelligenceService resumeIntelligence;
+    private final JobDiscoveryService jobDiscovery;
 
-    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService, ResumeIntelligenceService resumeIntelligence) {
+    public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService, ResumeIntelligenceService resumeIntelligence, JobDiscoveryService jobDiscovery) {
         this.repository = repository;
         this.visaIntelligence = visaIntelligence;
         this.matchEngine = matchEngine;
@@ -43,6 +46,7 @@ public class CareerWorkflow {
         this.companyIntelligence = companyIntelligence;
         this.applicationPackageService = applicationPackageService;
         this.resumeIntelligence = resumeIntelligence;
+        this.jobDiscovery = jobDiscovery;
     }
 
     public CareerDashboard dashboard() {
@@ -138,6 +142,66 @@ public class CareerWorkflow {
         return repository.saveCompany(company);
     }
 
+    public JobDiscoveryResult importCompanies(String text) {
+        if (text == null || text.isBlank()) {
+            return new JobDiscoveryResult(Instant.now(), 0, 0, 0, 0, List.of("No companies provided."));
+        }
+        List<String> messages = new ArrayList<>();
+        int saved = 0;
+        for (String line : text.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.isBlank()) {
+                continue;
+            }
+            String[] parts = trimmed.split(",", 2);
+            String name = parts.length == 2 ? parts[0].trim() : domainName(trimmed);
+            String url = parts.length == 2 ? parts[1].trim() : trimmed;
+            if (!url.startsWith("http")) {
+                messages.add("Skipped invalid URL: " + trimmed);
+                continue;
+            }
+            addCompany(new AddCompanyRequest(name, url, List.of("Remote"), 5, "Imported for job discovery."));
+            saved++;
+        }
+        messages.add("Imported " + saved + " companies.");
+        return new JobDiscoveryResult(Instant.now(), saved, 0, saved, 0, messages);
+    }
+
+    public JobDiscoveryResult scanCompanies() {
+        List<CompanyRecord> companies = repository.companies().stream()
+                .filter(company -> !company.blocked())
+                .filter(company -> company.careerUrl() != null && company.careerUrl().startsWith("http"))
+                .filter(company -> !company.id().equals("sample-company"))
+                .toList();
+        List<String> messages = new ArrayList<>();
+        int found = 0;
+        int saved = 0;
+        int expired = 0;
+        for (CompanyRecord company : companies) {
+            JobDiscoveryService.ScanPage page = jobDiscovery.scan(company);
+            found += page.jobs().size();
+            List<String> activeUrls = page.jobs().stream().map(JobDiscoveryService.DiscoveredJob::url).toList();
+            expired += repository.removeExpiredScannerJobs(company.id(), activeUrls);
+            CompanyRecord updatedCompany = updateCompanyAfterScan(company, page.atsPlatform());
+            for (JobDiscoveryService.DiscoveredJob discovered : page.jobs()) {
+                analyzeJob(new AnalyzeJobRequest(
+                        updatedCompany.name(),
+                        updatedCompany.id(),
+                        discovered.title(),
+                        discovered.location(),
+                        discovered.url(),
+                        discovered.description(),
+                        ""
+                ));
+                saved++;
+            }
+            messages.add(updatedCompany.name() + ": " + page.jobs().size() + " jobs found via " + page.atsPlatform());
+        }
+        JobDiscoveryResult result = new JobDiscoveryResult(Instant.now(), companies.size(), found, saved, expired, messages);
+        repository.appendLog("job-discovery-last-run.json", result);
+        return result;
+    }
+
     public JobRecord analyzeJob(AnalyzeJobRequest request) {
         CompanyRecord company = repository.findCompany(request.companyId() == null || request.companyId().isBlank() ? request.company() : request.companyId()).orElse(null);
         VisaAssessment visa = visaIntelligence.assess(request.description(), company);
@@ -167,7 +231,9 @@ public class CareerWorkflow {
                 jobIntelligence.ranking().overallMatch() >= 70 && jobIntelligence.visa().visaScore() >= 50,
                 Instant.now(),
                 Instant.now(),
-                List.of("Analyzed locally by Career Copilot.")
+                request.companyId() == null || request.companyId().isBlank()
+                        ? List.of("Analyzed locally by Career Copilot.")
+                        : List.of("Analyzed locally by Career Copilot.", "Discovered by career page scanner.")
         );
         return repository.saveJob(job);
     }
@@ -264,5 +330,47 @@ public class CareerWorkflow {
             return "Senior";
         }
         return "Unknown";
+    }
+
+    private CompanyRecord updateCompanyAfterScan(CompanyRecord company, String atsPlatform) {
+        return repository.saveCompany(new CompanyRecord(
+                company.id(),
+                company.name(),
+                company.industry(),
+                company.website(),
+                company.careerUrl(),
+                atsPlatform == null || atsPlatform.isBlank() ? company.atsPlatform() : atsPlatform,
+                company.remotePolicy(),
+                "Hiring page scanned",
+                company.visaSponsorshipHistory(),
+                company.visaConfidence(),
+                company.locations(),
+                company.historicalApplications(),
+                company.historicalInterviews(),
+                company.historicalRejections(),
+                company.historicalOffers(),
+                company.averageMatchScore(),
+                company.priority(),
+                company.blocked(),
+                Instant.now(),
+                Instant.now(),
+                Math.max(company.confidenceScore(), 60),
+                company.notes(),
+                company.technologyStack(),
+                append(company.learningHistory(), "Career page scanned by Atlas.")
+        ));
+    }
+
+    private List<String> append(List<String> values, String value) {
+        List<String> next = new ArrayList<>(values == null ? List.of() : values);
+        next.add(value);
+        return next;
+    }
+
+    private String domainName(String url) {
+        return url.replace("https://", "")
+                .replace("http://", "")
+                .replace("www.", "")
+                .split("/")[0];
     }
 }

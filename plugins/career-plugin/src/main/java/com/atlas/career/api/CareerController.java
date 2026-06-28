@@ -3,6 +3,7 @@ package com.atlas.career.api;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.JobDiscoveryResult;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
 import com.atlas.career.service.CareerWorkflow;
@@ -36,6 +37,16 @@ public class CareerController {
     @PostMapping("/companies")
     public CompanyRecord addCompany(@RequestBody AddCompanyRequest request) {
         return workflow.addCompany(request);
+    }
+
+    @PostMapping("/companies/import")
+    public JobDiscoveryResult importCompanies(@RequestBody ImportCompaniesRequest request) {
+        return workflow.importCompanies(request.text());
+    }
+
+    @PostMapping("/jobs/scan")
+    public JobDiscoveryResult scanJobs() {
+        return workflow.scanCompanies();
     }
 
     @GetMapping("/jobs")
@@ -86,5 +97,8 @@ public class CareerController {
     @PostMapping("/applications/{applicationId}/approve")
     public ApplicationPackage approveApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
         return workflow.approveApplication(applicationId);
+    }
+
+    public record ImportCompaniesRequest(String text) {
     }
 }

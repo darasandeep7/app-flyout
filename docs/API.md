@@ -5,8 +5,10 @@
 - `GET /api/plugins/career/dashboard`
 - `GET /api/plugins/career/companies`
 - `POST /api/plugins/career/companies`
+- `POST /api/plugins/career/companies/import`
 - `GET /api/plugins/career/jobs`
 - `POST /api/plugins/career/jobs/analyze`
+- `POST /api/plugins/career/jobs/scan`
 - `GET /api/plugins/career/applications`
 - `GET /api/plugins/career/preferences`
 - `POST /api/plugins/career/preferences`
