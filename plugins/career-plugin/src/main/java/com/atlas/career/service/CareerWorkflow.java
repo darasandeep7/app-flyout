@@ -31,6 +31,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -267,6 +271,7 @@ public class CareerWorkflow {
         CareerPreferences preferences = repository.preferences();
         return repository.jobs().stream()
                 .filter(this::fieldRelevant)
+                .filter(job -> !hasActivePackage(job.id()))
                 .filter(applicationPackageService::shouldPrepare)
                 .filter(job -> !containsIgnoreCase(preferences.blacklistCompanies(), job.company()))
                 .filter(job -> !historicallyBlocked(job.company()))
@@ -277,13 +282,25 @@ public class CareerWorkflow {
                 .toList();
     }
 
+    private boolean hasActivePackage(String jobId) {
+        return repository.applications().stream().anyMatch(applicationPackage ->
+                applicationPackage.jobId().equals(jobId)
+                        && !applicationPackage.status().equals("BLOCKED")
+                        && !applicationPackage.status().equals("WITHDRAWN"));
+    }
+
     public ApplicationPackage prepareApplication(JobRecord job) {
         ApplicationPackage applicationPackage = applicationPackageService.create(job);
         String resume = applicationPackageService.resumeMarkdown(job);
         String coverLetter = applicationPackageService.coverLetterMarkdown(job);
-        repository.writeApplicationText(applicationPackage, applicationPackage.resumePath(), resume);
+        String folder = "applications/" + applicationPackage.id();
+        repository.writeApplicationText(applicationPackage, folder + "/resume.md", resume);
+        repository.writeApplicationBytes(applicationPackage, applicationPackage.resumePath(), pdf(resume));
+        repository.writeApplicationBytes(applicationPackage, folder + "/resume.docx", docx(resume));
         repository.writeApplicationText(applicationPackage, "resumes/generated/" + applicationPackage.resumeVersion() + ".md", resume);
-        repository.writeApplicationText(applicationPackage, applicationPackage.coverLetterPath(), coverLetter);
+        repository.writeApplicationText(applicationPackage, folder + "/cover-letter.md", coverLetter);
+        repository.writeApplicationBytes(applicationPackage, applicationPackage.coverLetterPath(), pdf(coverLetter));
+        repository.writeApplicationBytes(applicationPackage, folder + "/cover-letter.docx", docx(coverLetter));
         repository.writeApplicationArtifact(applicationPackage, applicationPackage.answersPath(), applicationPackage.answers());
         repository.writeApplicationText(applicationPackage, applicationPackage.reportPath(), applicationPackageService.reportMarkdown(job, applicationPackage));
         return repository.saveApplication(applicationPackage);
@@ -558,5 +575,77 @@ public class CareerWorkflow {
                 .replace("http://", "")
                 .replace("www.", "")
                 .split("/")[0];
+    }
+
+    private byte[] pdf(String markdown) {
+        String text = markdown.replace("#", "").replace("*", "");
+        StringBuilder stream = new StringBuilder("BT /F1 11 Tf 50 760 Td 14 TL ");
+        for (String line : text.split("\\R")) {
+            if (!line.isBlank()) {
+                stream.append("(").append(pdfEscape(line.length() > 95 ? line.substring(0, 95) : line)).append(") Tj T* ");
+            }
+        }
+        stream.append("ET");
+        List<String> objects = List.of(
+                "<< /Type /Catalog /Pages 2 0 R >>",
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+                "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+                "<< /Length " + stream.length() + " >>\nstream\n" + stream + "\nendstream"
+        );
+        StringBuilder pdf = new StringBuilder("%PDF-1.4\n");
+        List<Integer> offsets = new ArrayList<>();
+        for (int i = 0; i < objects.size(); i++) {
+            offsets.add(pdf.toString().getBytes(StandardCharsets.UTF_8).length);
+            pdf.append(i + 1).append(" 0 obj\n").append(objects.get(i)).append("\nendobj\n");
+        }
+        int xref = pdf.toString().getBytes(StandardCharsets.UTF_8).length;
+        pdf.append("xref\n0 ").append(objects.size() + 1).append("\n0000000000 65535 f \n");
+        for (int offset : offsets) {
+            pdf.append(String.format("%010d 00000 n \n", offset));
+        }
+        pdf.append("trailer << /Size ").append(objects.size() + 1).append(" /Root 1 0 R >>\nstartxref\n").append(xref).append("\n%%EOF");
+        return pdf.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String pdfEscape(String value) {
+        return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)");
+    }
+
+    private byte[] docx(String markdown) {
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try (ZipOutputStream zip = new ZipOutputStream(out)) {
+                zip(zip, "[Content_Types].xml", """
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>
+                        """);
+                zip(zip, "_rels/.rels", """
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>
+                        """);
+                String paragraphs = java.util.Arrays.stream(markdown.replace("#", "").split("\\R"))
+                        .filter(line -> !line.isBlank())
+                        .map(line -> "<w:p><w:r><w:t>" + xml(line) + "</w:t></w:r></w:p>")
+                        .collect(Collectors.joining());
+                zip(zip, "word/document.xml", """
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>%s</w:body></w:document>
+                        """.formatted(paragraphs));
+            }
+            return out.toByteArray();
+        } catch (Exception ex) {
+            return markdown.getBytes(StandardCharsets.UTF_8);
+        }
+    }
+
+    private void zip(ZipOutputStream zip, String name, String value) throws java.io.IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.write(value.getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
+    }
+
+    private String xml(String value) {
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 }

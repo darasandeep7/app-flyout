@@ -26,6 +26,23 @@ def text_for_answer(answers, label):
     return ""
 
 
+def best_option(label, options):
+    normalized = (label or "").lower()
+    for option in options:
+        value = (option or "").lower()
+        if not value:
+            continue
+        if ("yes" in value and any(token in normalized for token in ["authorized", "eligible", "work"])) or ("no" in value and "sponsor" in normalized):
+            return option
+        if "united states" in value or value == "usa":
+            return option
+        if "texas" in value or value == "tx":
+            return option
+        if "remote" in value:
+            return option
+    return options[0] if options else ""
+
+
 def field_label(page, locator):
     try:
         attrs = []
@@ -140,6 +157,35 @@ def run_application(payload_path: Path) -> int:
                     except Exception:
                         continue
 
+            selects = page.locator("select")
+            for index in range(min(selects.count(), 30)):
+                field = selects.nth(index)
+                try:
+                    if not field.is_visible(timeout=500):
+                        continue
+                    label = field_label(page, field)
+                    options = field.locator("option").all_inner_texts(timeout=1000)
+                    choice = best_option(label, options)
+                    if choice:
+                        field.select_option(label=choice, timeout=1500)
+                        actions.append(f"Selected option: {label[:80]} -> {choice[:60]}")
+                except Exception:
+                    continue
+
+            for selector in ["input[type='checkbox']", "input[type='radio']"]:
+                fields = page.locator(selector)
+                for index in range(min(fields.count(), 50)):
+                    field = fields.nth(index)
+                    try:
+                        if not field.is_visible(timeout=500) or field.is_checked(timeout=500):
+                            continue
+                        label = field_label(page, field).lower()
+                        if any(token in label for token in ["agree", "consent", "authorize", "eligible", "remote", "terms"]) and not any(token in label for token in ["no ", "not ", "decline"]):
+                            field.check(timeout=1500)
+                            actions.append(f"Checked field: {label[:80]}")
+                    except Exception:
+                        continue
+
             final_submit = page.get_by_role("button", name=re.compile("submit|send application|finish", re.I))
             screenshot = screenshots_dir / "before-final-review.png"
             page.screenshot(path=str(screenshot), full_page=True)
@@ -210,12 +256,16 @@ def main() -> int:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             page.goto(args.url, wait_until="networkidle", timeout=30000)
+            for _ in range(4):
+                page.mouse.wheel(0, 1800)
+                page.wait_for_timeout(700)
             title = page.title()
             text = page.locator("body").inner_text(timeout=5000)
             screenshot = output / "images" / "page.png"
             screenshot.parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(screenshot), full_page=True)
             image_urls = page.eval_on_selector_all("img", "(imgs) => imgs.map(img => img.currentSrc || img.src).filter(Boolean).slice(0, 40)")
+            links = page.eval_on_selector_all("a", "(anchors) => anchors.map(a => ({href: a.href, text: (a.innerText || a.textContent || '').trim()})).filter(a => a.href && a.text).slice(0, 300)")
             browser.close()
     except Exception as exc:
         print(json.dumps({
@@ -236,7 +286,7 @@ def main() -> int:
         "visibleText": text[:20000],
         "screenshots": [str(screenshot)],
         "images": [],
-        "structured": {"imageUrls": image_urls},
+        "structured": {"imageUrls": image_urls, "links": links},
         "fallback": False,
         "error": None,
     }))

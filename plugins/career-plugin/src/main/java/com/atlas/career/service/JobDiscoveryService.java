@@ -1,6 +1,10 @@
 package com.atlas.career.service;
 
+import com.atlas.browser.BrowserAutomation;
+import com.atlas.browser.BrowserRequest;
+import com.atlas.browser.BrowserResult;
 import com.atlas.career.domain.CompanyRecord;
+import java.nio.file.Path;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -12,34 +16,82 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class JobDiscoveryService {
     private static final Pattern ANCHOR = Pattern.compile("<a\\s+[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final Pattern TAGS = Pattern.compile("<[^>]+>");
+    private final BrowserAutomation browserAutomation;
+    private final Path careerFolder;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(12))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
+    public JobDiscoveryService(BrowserAutomation browserAutomation, @Value("${atlas.workspace-folder:workspace}") String workspaceFolder) {
+        this.browserAutomation = browserAutomation;
+        this.careerFolder = Path.of(workspaceFolder).resolve("career");
+    }
+
     public ScanPage scan(CompanyRecord company) {
         String html = fetch(company.careerUrl());
         String ats = classifyAts(company.careerUrl(), html);
         Map<String, DiscoveredJob> jobs = new LinkedHashMap<>();
-        var matcher = ANCHOR.matcher(html);
-        while (matcher.find() && jobs.size() < 40) {
-            String href = absoluteUrl(company.careerUrl(), decode(matcher.group(1)));
-            String title = cleanText(matcher.group(2));
-            if (looksLikeJobLink(href, title)) {
-                String normalizedTitle = normalizeTitle(title, href);
-                if (!normalizedTitle.isBlank()) {
-                    String description = normalizeDescription(fetchQuietly(href), normalizedTitle);
-                    jobs.putIfAbsent(href, new DiscoveredJob(normalizedTitle, locationFrom(description), href, description));
+        extractLinks(company.careerUrl(), html, jobs);
+        for (String pageUrl : paginationUrls(company.careerUrl())) {
+            if (jobs.size() >= 80) {
+                break;
+            }
+            extractLinks(pageUrl, fetch(pageUrl), jobs);
+        }
+        if (jobs.size() < 5) {
+            BrowserResult result = browserAutomation.inspect(new BrowserRequest(company.careerUrl(), careerFolder.resolve("logs/browser-scan-" + company.id()), true, false));
+            ats = classifyAts(company.careerUrl(), html + " " + result.visibleText());
+            Object links = result.structured().get("links");
+            if (links instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        addJob(company.careerUrl(), String.valueOf(map.get("href")), String.valueOf(map.get("text")), jobs);
+                    }
                 }
             }
         }
         return new ScanPage(ats, new ArrayList<>(jobs.values()));
+    }
+
+    private void extractLinks(String baseUrl, String html, Map<String, DiscoveredJob> jobs) {
+        var matcher = ANCHOR.matcher(html);
+        while (matcher.find() && jobs.size() < 80) {
+            addJob(baseUrl, decode(matcher.group(1)), cleanText(matcher.group(2)), jobs);
+        }
+    }
+
+    private void addJob(String baseUrl, String hrefValue, String title, Map<String, DiscoveredJob> jobs) {
+        String href = absoluteUrl(baseUrl, hrefValue);
+        if (looksLikeJobLink(href, title)) {
+            String normalizedTitle = normalizeTitle(title, href);
+            if (!normalizedTitle.isBlank()) {
+                String description = normalizeDescription(fetchQuietly(href), normalizedTitle);
+                jobs.putIfAbsent(href, new DiscoveredJob(normalizedTitle, locationFrom(description), href, description));
+            }
+        }
+    }
+
+    private List<String> paginationUrls(String careerUrl) {
+        if (careerUrl == null || careerUrl.isBlank()) {
+            return List.of();
+        }
+        String separator = careerUrl.contains("?") ? "&" : "?";
+        return List.of(
+                careerUrl + separator + "page=2",
+                careerUrl + separator + "page=3",
+                careerUrl + separator + "start=10",
+                careerUrl + separator + "start=20",
+                careerUrl + separator + "offset=10",
+                careerUrl + separator + "offset=20"
+        );
     }
 
     private String fetch(String url) {

@@ -202,6 +202,19 @@ public class CareerRepository {
         }
     }
 
+    public void writeApplicationBytes(ApplicationPackage applicationPackage, String relativePath, byte[] value) {
+        Path path = careerFolder.resolve(relativePath).normalize();
+        if (!path.startsWith(careerFolder)) {
+            throw new IllegalArgumentException("Invalid application artifact path");
+        }
+        try {
+            Files.createDirectories(path.getParent());
+            Files.write(path, value);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not write " + path, ex);
+        }
+    }
+
     public Optional<CompanyRecord> findCompany(String companyIdOrName) {
         return companies().stream()
                 .filter(company -> company.id().equals(companyIdOrName) || company.name().equalsIgnoreCase(companyIdOrName))
