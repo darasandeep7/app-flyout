@@ -63,6 +63,7 @@ public class CareerWorkflow {
     }
 
     public CareerDashboard dashboard() {
+        repository.importSeedCompanies();
         List<CompanyRecord> companies = repository.companies();
         List<JobRecord> jobs = repository.jobs();
         List<JobRecord> topMatches = jobs.stream()
@@ -87,6 +88,7 @@ public class CareerWorkflow {
     }
 
     public List<CompanyRecord> companies() {
+        repository.importSeedCompanies();
         return repository.companies();
     }
 
@@ -217,12 +219,17 @@ public class CareerWorkflow {
     }
 
     public JobDiscoveryResult scanCompanies() {
+        int seedAdded = repository.importSeedCompanies();
         List<CompanyRecord> companies = repository.companies().stream()
                 .filter(company -> !company.blocked())
                 .filter(company -> company.careerUrl() != null && company.careerUrl().startsWith("http"))
                 .filter(company -> !company.id().equals("sample-company"))
                 .toList();
         List<String> messages = new ArrayList<>();
+        if (seedAdded > 0) {
+            messages.add("Imported " + seedAdded + " seed companies before scanning.");
+        }
+        messages.add("Scanning " + companies.size() + " configured companies.");
         int found = 0;
         int saved = 0;
         int expired = 0;

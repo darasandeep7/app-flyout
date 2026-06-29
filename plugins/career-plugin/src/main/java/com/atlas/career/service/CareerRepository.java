@@ -372,10 +372,10 @@ public class CareerRepository {
         write(masterResumePath(), MasterResume.empty());
     }
 
-    private void importSeedCompanies() {
+    public int importSeedCompanies() {
         InputStream stream = getClass().getResourceAsStream("/career-seed-companies.csv");
         if (stream == null) {
-            return;
+            return 0;
         }
 
         Map<String, CompanyRecord> merged = new LinkedHashMap<>();
@@ -383,7 +383,9 @@ public class CareerRepository {
             merged.put(company.id(), company);
         }
 
+        boolean hadSample = merged.containsKey("sample-company");
         int before = merged.size();
+        int beforeWithoutSample = before - (hadSample ? 1 : 0);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             reader.lines()
                     .skip(1)
@@ -394,13 +396,14 @@ public class CareerRepository {
             throw new IllegalStateException("Could not import career seed companies", ex);
         }
 
-        if (merged.size() != before) {
+        if (merged.size() != before || hadSample) {
             merged.remove("sample-company");
             List<CompanyRecord> companies = merged.values().stream()
                     .sorted(Comparator.comparing(CompanyRecord::priority).reversed().thenComparing(CompanyRecord::name))
                     .toList();
             write(companiesPath(), companies);
         }
+        return Math.max(0, merged.size() - beforeWithoutSample);
     }
 
     private void addSeedCompany(String line, Map<String, CompanyRecord> merged) {
