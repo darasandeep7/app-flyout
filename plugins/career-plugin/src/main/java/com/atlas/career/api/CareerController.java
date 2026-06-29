@@ -1,6 +1,7 @@
 package com.atlas.career.api;
 
 import com.atlas.career.domain.ApplicationPackage;
+import com.atlas.career.domain.AnswerTrainingRule;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationExecutionResult;
@@ -70,6 +71,16 @@ public class CareerController {
     @GetMapping("/applications/history")
     public List<ApplicationHistoryRecord> applicationHistory() {
         return workflow.applicationHistory();
+    }
+
+    @GetMapping("/answer-training")
+    public List<AnswerTrainingRule> answerTrainingRules() {
+        return workflow.answerTrainingRules();
+    }
+
+    @PostMapping("/answer-training")
+    public AnswerTrainingRule saveAnswerTrainingRule(@RequestBody AnswerTrainingRule rule) {
+        return workflow.saveAnswerTrainingRule(rule);
     }
 
     @GetMapping("/learning/insights")

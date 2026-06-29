@@ -152,6 +152,16 @@ type ApplicationHistoryRecord = {
   recordedAt: string;
 };
 
+type AnswerTrainingRule = {
+  id: string;
+  questionPattern: string;
+  preferredFormat: string;
+  exampleAnswer: string;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 type LocalModel = {
   name: string;
   family: string;
@@ -241,6 +251,7 @@ function Career() {
   const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
   const [applications, setApplications] = useState<ApplicationPackage[]>([]);
   const [applicationHistory, setApplicationHistory] = useState<ApplicationHistoryRecord[]>([]);
+  const [answerTrainingRules, setAnswerTrainingRules] = useState<AnswerTrainingRule[]>([]);
   const [learningInsights, setLearningInsights] = useState<CareerLearningInsight[]>([]);
   const [preferences, setPreferences] = useState<CareerPreferences | null>(null);
   const [preferredTitles, setPreferredTitles] = useState("");
@@ -259,15 +270,19 @@ function Career() {
   const [companyImportText, setCompanyImportText] = useState("");
   const [scanResult, setScanResult] = useState<JobDiscoveryResult | null>(null);
   const [executionResult, setExecutionResult] = useState<ApplicationExecutionResult | null>(null);
+  const [trainingPattern, setTrainingPattern] = useState("");
+  const [trainingFormat, setTrainingFormat] = useState("");
+  const [trainingExample, setTrainingExample] = useState("");
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, learningResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, answerTrainingResponse, learningResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
       fetch("/api/plugins/career/intelligence/recommendations"),
       fetch("/api/plugins/career/applications"),
       fetch("/api/plugins/career/applications/history"),
+      fetch("/api/plugins/career/answer-training"),
       fetch("/api/plugins/career/learning/insights"),
       fetch("/api/plugins/career/preferences"),
       fetch("/api/plugins/career/resume/master"),
@@ -278,6 +293,7 @@ function Career() {
     setRecommendations(await recommendationResponse.json());
     setApplications(await applicationResponse.json());
     setApplicationHistory(await historyResponse.json());
+    setAnswerTrainingRules(await answerTrainingResponse.json());
     setLearningInsights(await learningResponse.json());
     const loadedPreferences = await preferenceResponse.json();
     setPreferences(loadedPreferences);
@@ -376,6 +392,26 @@ function Career() {
     setMasterResumeContent(saved.content);
     setResumeKeywords(saved.preferredKeywords.join(", "));
     await load();
+  }
+
+  async function saveAnswerTrainingRule() {
+    setStatus("Saving answer training rule...");
+    await fetch("/api/plugins/career/answer-training", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "",
+        questionPattern: trainingPattern,
+        preferredFormat: trainingFormat,
+        exampleAnswer: trainingExample,
+        enabled: true
+      })
+    });
+    setTrainingPattern("");
+    setTrainingFormat("");
+    setTrainingExample("");
+    await load();
+    setStatus("Answer training rule saved");
   }
 
   async function approveApplication(applicationId: string) {
@@ -512,6 +548,34 @@ function Career() {
           <p className="mt-3 text-sm text-zinc-400">Every recommendation includes confidence and an override path.</p>
         </section>
       </div>
+
+      <section className="panel space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold">Answer Training</h3>
+            <p className="mt-1 text-sm text-zinc-500">Save reusable guidance for application questions. Atlas injects matching rules into future answer generation.</p>
+          </div>
+          <button className="button" onClick={saveAnswerTrainingRule} disabled={!trainingPattern.trim() || !trainingFormat.trim()} title="Save answer training"><BrainCircuit size={18} />Save Rule</button>
+        </div>
+        <div className="grid grid-cols-[0.8fr_1fr_1fr] gap-3">
+          <label className="field-label">Question Pattern<input className="input mt-1 w-full" value={trainingPattern} onChange={(event) => setTrainingPattern(event.target.value)} placeholder="work authorization, salary, tell me about yourself" /></label>
+          <label className="field-label">Preferred Format<textarea className="input mt-1 min-h-24 w-full py-3" value={trainingFormat} onChange={(event) => setTrainingFormat(event.target.value)} placeholder="Use 3 short paragraphs. Start direct. Mention Java/backend experience. Do not over-explain." /></label>
+          <label className="field-label">Example Answer<textarea className="input mt-1 min-h-24 w-full py-3" value={trainingExample} onChange={(event) => setTrainingExample(event.target.value)} placeholder="Optional example answer Atlas can imitate." /></label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {answerTrainingRules.slice(0, 6).map((rule) => (
+            <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={rule.id}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">{rule.questionPattern}</span>
+                <span className="text-xs text-cyan-300">{rule.enabled ? "Enabled" : "Paused"}</span>
+              </div>
+              <p className="mt-2 text-sm text-zinc-400">{rule.preferredFormat}</p>
+              {rule.exampleAnswer && <p className="mt-2 text-xs text-zinc-500">{rule.exampleAnswer}</p>}
+            </div>
+          ))}
+          {answerTrainingRules.length === 0 && <p className="text-sm text-zinc-500">No answer rules saved yet.</p>}
+        </div>
+      </section>
 
       <div className="grid grid-cols-[1fr_1.2fr] gap-5">
         <section className="panel space-y-4">

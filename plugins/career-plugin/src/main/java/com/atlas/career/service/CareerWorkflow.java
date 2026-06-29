@@ -8,6 +8,7 @@ import com.atlas.career.api.CareerDashboard;
 import com.atlas.career.domain.ApplicationExecutionResult;
 import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.ApplicationPackage;
+import com.atlas.career.domain.AnswerTrainingRule;
 import com.atlas.career.domain.CareerLearningInsight;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
@@ -99,6 +100,27 @@ public class CareerWorkflow {
 
     public List<ApplicationHistoryRecord> applicationHistory() {
         return repository.applicationHistory();
+    }
+
+    public List<AnswerTrainingRule> answerTrainingRules() {
+        return repository.answerTrainingRules();
+    }
+
+    public AnswerTrainingRule saveAnswerTrainingRule(AnswerTrainingRule request) {
+        Instant now = Instant.now();
+        String id = request.id() == null || request.id().isBlank()
+                ? com.atlas.common.Slug.of(request.questionPattern() + "-" + now.toEpochMilli())
+                : request.id();
+        AnswerTrainingRule rule = new AnswerTrainingRule(
+                id,
+                request.questionPattern() == null ? "" : request.questionPattern().trim(),
+                request.preferredFormat() == null ? "" : request.preferredFormat().trim(),
+                request.exampleAnswer() == null ? "" : request.exampleAnswer().trim(),
+                request.enabled(),
+                request.createdAt() == null ? now : request.createdAt(),
+                now
+        );
+        return repository.saveAnswerTrainingRule(rule);
     }
 
     public List<CareerLearningInsight> learningInsights() {

@@ -5,6 +5,7 @@ import com.atlas.ai.AiModelSettingsService;
 import com.atlas.ai.ModelProvider;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.ApplicationQuestionAnswer;
+import com.atlas.career.domain.AnswerTrainingRule;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
@@ -149,7 +150,10 @@ public class ApplicationPackageService {
 
                 Master Resume:
                 %s
-                """.formatted(job.company(), job.title(), job.location(), trim(job.description(), 7000), job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch(), masterResume.content());
+
+                Saved answer training rules:
+                %s
+                """.formatted(job.company(), job.title(), job.location(), trim(job.description(), 7000), job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch(), masterResume.content(), trainingRulesFor(job));
 
         var response = modelProvider.generate(new ChatRequest(model, "applicationPackage", prompt, java.util.Map.of("temperature", 0.2, "num_ctx", 4096)));
         if (response.fallback() || response.text() == null || response.text().isBlank()) {
@@ -240,7 +244,11 @@ public class ApplicationPackageService {
     }
 
     private String cacheKey(JobRecord job, MasterResume masterResume, String model) {
-        return sha256(model + "\n" + job.company() + "\n" + job.title() + "\n" + job.description() + "\n" + masterResume.updatedAt() + "\n" + masterResume.content());
+        String rules = repository.answerTrainingRules().stream()
+                .filter(AnswerTrainingRule::enabled)
+                .map(rule -> rule.id() + ":" + rule.updatedAt())
+                .collect(java.util.stream.Collectors.joining("|"));
+        return sha256(model + "\n" + job.company() + "\n" + job.title() + "\n" + job.description() + "\n" + masterResume.updatedAt() + "\n" + rules + "\n" + masterResume.content());
     }
 
     private String sha256(String value) {
@@ -262,6 +270,45 @@ public class ApplicationPackageService {
             return value == null ? "" : value;
         }
         return value.substring(0, max);
+    }
+
+    private String trainingRulesFor(JobRecord job) {
+        String text = (job.title() + "\n" + job.description()).toLowerCase(java.util.Locale.ROOT);
+        List<AnswerTrainingRule> rules = repository.answerTrainingRules().stream()
+                .filter(AnswerTrainingRule::enabled)
+                .filter(rule -> matchesRule(rule, text))
+                .limit(8)
+                .toList();
+        if (rules.isEmpty()) {
+            rules = repository.answerTrainingRules().stream()
+                    .filter(AnswerTrainingRule::enabled)
+                    .limit(5)
+                    .toList();
+        }
+        if (rules.isEmpty()) {
+            return "No saved answer training rules yet.";
+        }
+        StringBuilder out = new StringBuilder();
+        for (AnswerTrainingRule rule : rules) {
+            out.append("- Pattern: ").append(rule.questionPattern()).append("\n");
+            out.append("  Preferred format: ").append(rule.preferredFormat()).append("\n");
+            if (rule.exampleAnswer() != null && !rule.exampleAnswer().isBlank()) {
+                out.append("  Example answer: ").append(rule.exampleAnswer()).append("\n");
+            }
+        }
+        return out.toString();
+    }
+
+    private boolean matchesRule(AnswerTrainingRule rule, String text) {
+        if (rule.questionPattern() == null || rule.questionPattern().isBlank()) {
+            return true;
+        }
+        for (String token : rule.questionPattern().toLowerCase(java.util.Locale.ROOT).split("[,\\s]+")) {
+            if (token.length() >= 4 && text.contains(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String reportMarkdown(JobRecord job, ApplicationPackage applicationPackage) {

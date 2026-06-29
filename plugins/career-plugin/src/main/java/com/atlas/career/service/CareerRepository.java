@@ -1,6 +1,7 @@
 package com.atlas.career.service;
 
 import com.atlas.career.domain.CompanyRecord;
+import com.atlas.career.domain.AnswerTrainingRule;
 import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
@@ -55,6 +56,11 @@ public class CareerRepository {
 
     public List<ApplicationHistoryRecord> applicationHistory() {
         return readList(applicationHistoryPath(), new TypeReference<>() {
+        });
+    }
+
+    public List<AnswerTrainingRule> answerTrainingRules() {
+        return readList(answerTrainingRulesPath(), new TypeReference<>() {
         });
     }
 
@@ -187,6 +193,15 @@ public class CareerRepository {
         return record;
     }
 
+    public AnswerTrainingRule saveAnswerTrainingRule(AnswerTrainingRule rule) {
+        List<AnswerTrainingRule> rules = new ArrayList<>(answerTrainingRules());
+        rules.removeIf(existing -> existing.id().equals(rule.id()));
+        rules.add(rule);
+        rules.sort(Comparator.comparing(AnswerTrainingRule::updatedAt).reversed());
+        write(answerTrainingRulesPath(), rules);
+        return rule;
+    }
+
     public void writeApplicationArtifact(ApplicationPackage applicationPackage, String relativePath, Object value) {
         Path path = careerFolder.resolve(relativePath).normalize();
         if (!path.startsWith(careerFolder)) {
@@ -284,6 +299,10 @@ public class CareerRepository {
 
     private Path applicationHistoryPath() {
         return careerFolder.resolve("applications/history.json");
+    }
+
+    private Path answerTrainingRulesPath() {
+        return careerFolder.resolve("answers/training-rules.json");
     }
 
     private Path preferencesPath() {
