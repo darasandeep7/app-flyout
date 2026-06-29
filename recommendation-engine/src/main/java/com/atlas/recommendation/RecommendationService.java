@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class RecommendationService {
     public JobRecommendation recommend(JobIntelligenceScore score, VisaAnalysisResult visa, boolean blockedCompany, boolean alreadyApplied) {
+        if (!fieldRelevant(score)) {
+            return new JobRecommendation(RecommendationCategory.SKIP, Math.max(70, score.confidence()), "Skipped because this job does not show enough Java, Spring, backend, or microservices relevance.", true);
+        }
         if (blockedCompany) {
             return new JobRecommendation(RecommendationCategory.BLOCKED_COMPANY, 95, "Company is blocked in your preferences.", true);
         }
@@ -28,9 +31,17 @@ public class RecommendationService {
         if (score.confidence() < 50) {
             return new JobRecommendation(RecommendationCategory.NEEDS_REVIEW, score.confidence(), "Low confidence; inspect the job manually.", true);
         }
-        if (score.overallMatch() >= 60) {
+        if (score.overallMatch() >= 68 && score.technicalMatch() >= 68) {
             return new JobRecommendation(RecommendationCategory.INTERESTING, score.confidence(), "Potentially useful but not a priority.", true);
         }
         return new JobRecommendation(RecommendationCategory.SKIP, score.confidence(), "Low overall fit.", true);
+    }
+
+    private boolean fieldRelevant(JobIntelligenceScore score) {
+        return score.technicalMatch() >= 62
+                && (score.javaMatch() >= 70
+                || score.springMatch() >= 70
+                || score.backendMatch() >= 70
+                || score.microservicesMatch() >= 70);
     }
 }

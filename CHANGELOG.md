@@ -14,6 +14,7 @@
 - Added Browser Agent application execution for prepared packages with screenshots, action logs, uploads, field filling, and final-submit pauses.
 - Added application outcome tracking, local application history, and dashboard funnel counts from recorded outcomes.
 - Added company-level learning insights that prioritize or deprioritize future applications from historical outcomes.
+- Tightened recommendation relevance so unrelated roles are skipped and hidden unless they match Java, Spring, backend/API, or microservices signals.
 - Added Career Copilot as the primary Atlas plugin.
 - Added company knowledge base storage.
 - Added job analysis, visa intelligence, and match scoring endpoints.

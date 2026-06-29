@@ -101,6 +101,8 @@ public class CareerIntelligenceController {
     @GetMapping("/recommendations")
     public List<RecommendationView> recommendations() {
         return workflow.jobs().stream()
+                .filter(workflow::fieldRelevant)
+                .filter(job -> job.intelligence() != null && job.intelligence().recommendation() != null && !job.intelligence().recommendation().category().name().equals("SKIP"))
                 .sorted(Comparator.comparing((JobRecord job) -> job.intelligence() == null ? 0 : job.intelligence().ranking().overallMatch()).reversed())
                 .map(job -> new RecommendationView(job.id(), job.company(), job.title(), job.location(),
                         job.intelligence() == null ? null : job.intelligence().recommendation(),

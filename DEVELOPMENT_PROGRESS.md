@@ -36,6 +36,7 @@
 - Browser Agent can execute approved application packages with Playwright, upload prepared files when possible, fill obvious answer fields, save screenshots/action logs, and pause before final submission or human gates.
 - Application execution can now be marked as applied, blocked, or another outcome; Atlas stores local history with resume version, cover letter, answers used, notes, and dashboard funnel counts.
 - Career learning insights summarize company outcomes and use prior blocked/interview/offer history to influence future queue preparation.
+- Recommendation and package queues now hide unrelated roles unless they show Java, Spring, backend/API, or microservices relevance.
 - Startup script and install guide.
 - Gradle wrapper files so the project does not require a global Gradle install.
 - Gradle Java toolchain resolver so Java 21 can be provisioned by Gradle when missing locally.

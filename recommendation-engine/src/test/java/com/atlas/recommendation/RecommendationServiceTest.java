@@ -21,4 +21,17 @@ class RecommendationServiceTest {
 
         assertThat(recommendation.category()).isEqualTo(RecommendationCategory.VISA_RISK);
     }
+
+    @Test
+    void unrelatedJobsAreSkippedEvenWhenOtherSignalsLookFine() {
+        JobRecommendation recommendation = service.recommend(
+                new JobIntelligenceScore(72, 45, 35, 35, 45, 50, 45, 50, 55, 75, 90, 90, 85, 65, 60, 70, Map.of()),
+                new VisaAnalysisResult(true, 85, 80, "ok", java.util.List.of(), "Review", false, true),
+                false,
+                false
+        );
+
+        assertThat(recommendation.category()).isEqualTo(RecommendationCategory.SKIP);
+        assertThat(recommendation.explanation()).contains("Java");
+    }
 }

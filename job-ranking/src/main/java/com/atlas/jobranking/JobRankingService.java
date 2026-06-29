@@ -33,12 +33,18 @@ public class JobRankingService {
         int technical = (java + spring + snowflake + backend + microservices + cloud) / 6;
         int growth = contains(text, "senior", "staff", "principal", "architect", "lead") ? 82 : 65;
         int overall = (technical * 26 + leadership * 10 + salary * 8 + location * 8 + remote * 8 + visa * 16 + growth * 12 + java * 6 + spring * 6) / 100;
+        boolean relevant = fieldRelevant(technical, java, spring, backend, microservices);
+        if (!relevant) {
+            overall = Math.min(overall, 45);
+            technical = Math.min(technical, 45);
+        }
         int interview = Math.max(10, Math.min(95, (overall + technical + visa + leadership) / 4));
         int confidence = Math.max(35, Math.min(95, 45 + signalCount(text) * 7));
 
         Map<String, String> explanations = new LinkedHashMap<>();
         explanations.put("Overall", "Weighted blend of technical fit, visa fit, location, remote preference, salary, and growth.");
         explanations.put("Technical", "Computed from Java, Spring, Snowflake, backend, microservices, and cloud signals.");
+        explanations.put("Field Relevance", relevant ? "Role matches the target Java/backend field." : "Role lacks enough Java, Spring, backend, or microservices signal.");
         explanations.put("Visa", request.visa() == null ? "Visa analysis unavailable." : request.visa().reason());
         explanations.put("Career Growth", growth >= 80 ? "Role appears aligned with senior growth." : "Growth signal is moderate.");
         explanations.put("Confidence", "Confidence rises with explicit signals in the job description.");
@@ -81,6 +87,10 @@ public class JobRankingService {
             if (text.contains(signal)) count++;
         }
         return count;
+    }
+
+    private boolean fieldRelevant(int technical, int java, int spring, int backend, int microservices) {
+        return technical >= 62 && (java >= 70 || spring >= 70 || backend >= 70 || microservices >= 70);
     }
 
     private int descriptionSimilarity(String left, String right) {

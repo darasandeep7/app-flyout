@@ -61,6 +61,7 @@ public class CareerWorkflow {
         List<CompanyRecord> companies = repository.companies();
         List<JobRecord> jobs = repository.jobs();
         List<JobRecord> topMatches = jobs.stream()
+                .filter(this::fieldRelevant)
                 .sorted(Comparator.comparing((JobRecord job) -> job.match().overallMatch()).reversed())
                 .limit(10)
                 .toList();
@@ -265,6 +266,7 @@ public class CareerWorkflow {
     public List<ApplicationPackage> runDailyPreparation() {
         CareerPreferences preferences = repository.preferences();
         return repository.jobs().stream()
+                .filter(this::fieldRelevant)
                 .filter(applicationPackageService::shouldPrepare)
                 .filter(job -> !containsIgnoreCase(preferences.blacklistCompanies(), job.company()))
                 .filter(job -> !historicallyBlocked(job.company()))
@@ -483,6 +485,13 @@ public class CareerWorkflow {
             return false;
         }
         return values.stream().anyMatch(value -> candidate.equalsIgnoreCase(value));
+    }
+
+    public boolean fieldRelevant(JobRecord job) {
+        return job.match() != null
+                && (job.match().javaMatch() >= 70
+                || job.match().springMatch() >= 70
+                || job.match().backendMatch() >= 70);
     }
 
     private DuplicateAssessment duplicateAssessment(AnalyzeJobRequest request) {

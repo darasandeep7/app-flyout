@@ -34,9 +34,15 @@ public class MatchEngine {
         int resume = (titleFit + java + spring + backend + leadership) / 5;
         int visaScore = visa == null ? 50 : visa.score();
         int overall = weighted(resume, java, spring, snowflake, backend, leadership, salaryMatch, locationMatch, visaScore);
+        boolean relevant = fieldRelevant(java, spring, backend);
+        if (!relevant) {
+            overall = Math.min(overall, 45);
+            resume = Math.min(resume, 45);
+        }
         int interview = Math.max(15, Math.min(92, (overall + resume + visaScore) / 3));
 
         Map<String, String> explanations = new LinkedHashMap<>();
+        explanations.put("Field Relevance", relevant ? "Role matches your Java/backend target field." : "Role lacks enough Java, Spring, backend, API, or microservices signal.");
         explanations.put("Title", titleFit >= 80 ? "Role title matches preferred titles." : "Role title is outside the strongest preferred title patterns.");
         explanations.put("Java", java >= 80 ? "Strong Java signal detected." : "Java signal is weak or missing.");
         explanations.put("Spring", spring >= 80 ? "Spring/Spring Boot appears in the role." : "Spring is not prominent.");
@@ -120,5 +126,9 @@ public class MatchEngine {
 
     private int weighted(int resume, int java, int spring, int snowflake, int backend, int leadership, int salary, int location, int visa) {
         return (resume * 20 + java * 12 + spring * 12 + snowflake * 8 + backend * 14 + leadership * 10 + salary * 6 + location * 8 + visa * 10) / 100;
+    }
+
+    private boolean fieldRelevant(int java, int spring, int backend) {
+        return java >= 70 || spring >= 70 || backend >= 70;
     }
 }
