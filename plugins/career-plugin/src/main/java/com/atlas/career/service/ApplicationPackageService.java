@@ -1,6 +1,7 @@
 package com.atlas.career.service;
 
 import com.atlas.ai.ChatRequest;
+import com.atlas.ai.AiModelSettingsService;
 import com.atlas.ai.ModelProvider;
 import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.ApplicationQuestionAnswer;
@@ -8,19 +9,30 @@ import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
 import com.atlas.common.Slug;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.atlas.recommendation.RecommendationCategory;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ApplicationPackageService {
     private final CareerRepository repository;
     private final ModelProvider modelProvider;
+    private final AiModelSettingsService modelSettings;
+    private final ObjectMapper objectMapper;
 
-    public ApplicationPackageService(CareerRepository repository, ModelProvider modelProvider) {
+    public ApplicationPackageService(CareerRepository repository, ModelProvider modelProvider, AiModelSettingsService modelSettings, ObjectMapper objectMapper) {
         this.repository = repository;
         this.modelProvider = modelProvider;
+        this.modelSettings = modelSettings;
+        this.objectMapper = objectMapper.findAndRegisterModules();
     }
 
     public boolean shouldPrepare(JobRecord job) {
@@ -48,11 +60,12 @@ public class ApplicationPackageService {
         String id = Slug.of(job.company() + "-" + job.title() + "-" + job.id());
         String folder = "applications/" + id;
         MasterResume masterResume = repository.masterResume();
+        GeneratedApplicationDraft draft = draft(job, masterResume);
         List<ApplicationQuestionAnswer> answers = List.of(
-                new ApplicationQuestionAnswer("Tell me about yourself.", answer(job, masterResume, "Tell me about yourself.", professionalSummary(job)), "Generated from the Master Resume and job description.", true),
-                new ApplicationQuestionAnswer("Why this company?", answer(job, masterResume, "Why this company?", "I am interested in " + job.company() + " because the role aligns with my backend engineering strengths and the company's hiring needs. I would review company-specific details before submitting."), "Draft requiring company research review.", true),
+                new ApplicationQuestionAnswer("Tell me about yourself.", draft.answer("tellMeAboutYourself", professionalSummary(job)), "Generated from the Master Resume and job description.", true),
+                new ApplicationQuestionAnswer("Why this company?", draft.answer("whyThisCompany", "I am interested in " + job.company() + " because the role aligns with my backend engineering strengths and the company's hiring needs. I would review company-specific details before submitting."), "Draft requiring company research review.", true),
                 new ApplicationQuestionAnswer("Work authorization", authorizationAnswer(job), "Generated from visa intelligence.", true),
-                new ApplicationQuestionAnswer("Salary expectations", answer(job, masterResume, "Salary expectations", "Open to a competitive market-aligned package based on scope, level, and total compensation."), "Reusable saved answer.", true)
+                new ApplicationQuestionAnswer("Salary expectations", draft.answer("salaryExpectations", "Open to a competitive market-aligned package based on scope, level, and total compensation."), "Reusable saved answer.", true)
         );
         String recommendation = job.intelligence() == null ? "Review" : job.intelligence().recommendation().category().name();
         int confidence = job.intelligence() == null ? job.match().overallMatch() : job.intelligence().recommendation().confidence();
@@ -77,10 +90,104 @@ public class ApplicationPackageService {
 
     public String resumeMarkdown(JobRecord job) {
         MasterResume masterResume = repository.masterResume();
+        return draft(job, masterResume).resume();
+    }
+
+    public String coverLetterMarkdown(JobRecord job) {
+        MasterResume masterResume = repository.masterResume();
+        return draft(job, masterResume).coverLetter();
+    }
+
+    private GeneratedApplicationDraft draft(JobRecord job, MasterResume masterResume) {
+        String fallbackResume = fallbackResume(job, masterResume);
+        String fallbackCoverLetter = fallbackCoverLetter(job);
+        if (masterResume.content().equals(MasterResume.empty().content())) {
+            return new GeneratedApplicationDraft(fallbackResume, fallbackCoverLetter, Map.of(), job.match().overallMatch(), job.visa().reason(), 45);
+        }
+
+        String model = modelSettings.modelFor("applicationPackage");
+        Path cachePath = repository.resolveCareerPath("ai-cache/application-packages/" + cacheKey(job, masterResume, model) + ".json");
+        if (Files.exists(cachePath)) {
+            try {
+                return parseDraft(Files.readString(cachePath), fallbackResume, fallbackCoverLetter);
+            } catch (Exception ignored) {
+                // Regenerate below if the cache file is stale or malformed.
+            }
+        }
+
+        String prompt = """
+                You are Atlas Career Copilot generating one application package for Sandeep.
+                Use ONLY facts from the Master Resume. Never invent employers, dates, tools, metrics, projects, education, certifications, or experience.
+                Return JSON only. No markdown fence.
+                Schema:
+                {
+                  "resume": "complete ATS-friendly tailored resume in Markdown",
+                  "coverLetter": "concise cover letter under 300 words in Markdown",
+                  "answers": {
+                    "tellMeAboutYourself": "editable application answer",
+                    "whyThisCompany": "editable application answer without invented company facts",
+                    "salaryExpectations": "editable application answer"
+                  },
+                  "matchScore": 0,
+                  "visaAnalysis": "short explanation",
+                  "confidence": 0
+                }
+
+                Job:
+                Company: %s
+                Title: %s
+                Location: %s
+                Description:
+                %s
+
+                Current deterministic scores:
+                Overall: %d
+                Java: %d
+                Spring: %d
+                Backend: %d
+                Visa: %d
+
+                Master Resume:
+                %s
+                """.formatted(job.company(), job.title(), job.location(), trim(job.description(), 7000), job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch(), masterResume.content());
+
+        var response = modelProvider.generate(new ChatRequest(model, "applicationPackage", prompt, java.util.Map.of("temperature", 0.2, "num_ctx", 4096)));
+        if (response.fallback() || response.text() == null || response.text().isBlank()) {
+            return new GeneratedApplicationDraft(fallbackResume + "\n\n_AI fallback: " + response.error() + "_", fallbackCoverLetter + "\n\n_AI fallback: " + response.error() + "_", Map.of(), job.match().overallMatch(), job.visa().reason(), 40);
+        }
+        try {
+            GeneratedApplicationDraft draft = parseDraft(response.text(), fallbackResume, fallbackCoverLetter);
+            Files.createDirectories(cachePath.getParent());
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(cachePath.toFile(), draft);
+            return draft;
+        } catch (Exception ex) {
+            return new GeneratedApplicationDraft(fallbackResume + "\n\n_AI fallback: Could not parse model JSON._", fallbackCoverLetter, Map.of(), job.match().overallMatch(), job.visa().reason(), 35);
+        }
+    }
+
+    private GeneratedApplicationDraft parseDraft(String text, String fallbackResume, String fallbackCoverLetter) throws java.io.IOException {
+        JsonNode root = objectMapper.readTree(jsonOnly(text));
+        String resume = textOr(root, "resume", fallbackResume);
+        String coverLetter = textOr(root, "coverLetter", fallbackCoverLetter);
+        Map<String, String> answers = root.has("answers")
+                ? objectMapper.convertValue(root.get("answers"), new com.fasterxml.jackson.core.type.TypeReference<>() {
+                })
+                : Map.of();
+        return new GeneratedApplicationDraft(
+                resume,
+                coverLetter,
+                answers,
+                root.path("matchScore").asInt(0),
+                textOr(root, "visaAnalysis", ""),
+                root.path("confidence").asInt(50)
+        );
+    }
+
+    private String fallbackResume(JobRecord job, MasterResume masterResume) {
         String sourceStatus = masterResume.content().equals(MasterResume.empty().content())
                 ? "Master resume is not filled in yet. Paste the real master resume before submitting any application."
                 : "Tailoring source is the saved Master Resume. Do not add experience outside that source.";
-        String fallback = """
+        return """
                 # Tailored Resume Draft
 
                 Role: %s
@@ -100,31 +207,10 @@ public class ApplicationPackageService {
 
                 %s
                 """.formatted(job.title(), job.company(), sourceStatus, job.match().overallMatch(), job.match().javaMatch(), job.match().springMatch(), job.match().backendMatch(), job.match().visaMatch(), masterResume.content());
-        if (masterResume.content().equals(MasterResume.empty().content())) {
-            return fallback;
-        }
-        return generate("""
-                You are tailoring Sandeep's resume for a job application.
-                Use ONLY facts from the Master Resume.
-                Never invent employers, titles, tools, metrics, dates, projects, education, certifications, or experience.
-                You may reorder, rephrase, highlight, and optimize for ATS.
-                Return a complete ATS-friendly resume in Markdown.
-
-                Job:
-                Company: %s
-                Title: %s
-                Location: %s
-                Description:
-                %s
-
-                Master Resume:
-                %s
-                """.formatted(job.company(), job.title(), job.location(), job.description(), masterResume.content()), fallback);
     }
 
-    public String coverLetterMarkdown(JobRecord job) {
-        MasterResume masterResume = repository.masterResume();
-        String fallback = """
+    private String fallbackCoverLetter(JobRecord job) {
+        return """
                 # Cover Letter Draft
 
                 Dear Hiring Team,
@@ -136,53 +222,46 @@ public class ApplicationPackageService {
                 Sincerely,
                 Sandeep
                 """.formatted(job.title(), job.company());
-        if (masterResume.content().equals(MasterResume.empty().content())) {
-            return fallback;
-        }
-        return generate("""
-                Write a concise cover letter for Sandeep.
-                Use ONLY facts from the Master Resume and job description.
-                Do not invent company facts, career history, metrics, or experience.
-                Keep it professional, specific to the role, and under 300 words.
-                Return Markdown.
-
-                Company: %s
-                Role: %s
-                Job Description:
-                %s
-
-                Master Resume:
-                %s
-                """.formatted(job.company(), job.title(), job.description(), masterResume.content()), fallback);
     }
 
-    private String answer(JobRecord job, MasterResume masterResume, String question, String fallback) {
-        if (masterResume.content().equals(MasterResume.empty().content())) {
-            return fallback;
+    private String jsonOnly(String value) {
+        String text = value == null ? "" : value.trim();
+        int start = text.indexOf('{');
+        int end = text.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            return text.substring(start, end + 1);
         }
-        return generate("""
-                Draft an application answer for Sandeep.
-                Use ONLY facts from the Master Resume and job description.
-                Never invent experience.
-                Keep the answer direct and editable.
-
-                Question: %s
-                Company: %s
-                Role: %s
-                Job Description:
-                %s
-
-                Master Resume:
-                %s
-                """.formatted(question, job.company(), job.title(), job.description(), masterResume.content()), fallback);
+        return text;
     }
 
-    private String generate(String prompt, String fallback) {
-        var response = modelProvider.generate(new ChatRequest(null, prompt, java.util.Map.of("temperature", 0.2)));
-        if (response.fallback() || response.text() == null || response.text().isBlank()) {
-            return fallback + "\n\n_AI fallback: " + (response.error() == null ? "Ollama unavailable." : response.error()) + "_";
+    private String textOr(JsonNode node, String field, String fallback) {
+        String value = node.path(field).asText("");
+        return value.isBlank() ? fallback : value;
+    }
+
+    private String cacheKey(JobRecord job, MasterResume masterResume, String model) {
+        return sha256(model + "\n" + job.company() + "\n" + job.title() + "\n" + job.description() + "\n" + masterResume.updatedAt() + "\n" + masterResume.content());
+    }
+
+    private String sha256(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder out = new StringBuilder();
+            for (byte b : hash) {
+                out.append(String.format("%02x", b));
+            }
+            return out.toString();
+        } catch (Exception ex) {
+            return Slug.of(value).substring(0, Math.min(80, Slug.of(value).length()));
         }
-        return response.text().trim();
+    }
+
+    private String trim(String value, int max) {
+        if (value == null || value.length() <= max) {
+            return value == null ? "" : value;
+        }
+        return value.substring(0, max);
     }
 
     public String reportMarkdown(JobRecord job, ApplicationPackage applicationPackage) {
@@ -227,5 +306,12 @@ public class ApplicationPackageService {
             return false;
         }
         return values.stream().anyMatch(value -> candidate.equalsIgnoreCase(value));
+    }
+
+    private record GeneratedApplicationDraft(String resume, String coverLetter, Map<String, String> answers, int matchScore, String visaAnalysis, int confidence) {
+        String answer(String key, String fallback) {
+            String value = answers == null ? "" : answers.getOrDefault(key, "");
+            return value == null || value.isBlank() ? fallback : value;
+        }
     }
 }

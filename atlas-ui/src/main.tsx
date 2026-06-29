@@ -152,6 +152,23 @@ type ApplicationHistoryRecord = {
   recordedAt: string;
 };
 
+type LocalModel = {
+  name: string;
+  family: string;
+  size: number;
+  modifiedAt: string;
+};
+
+type AiModelPreferences = {
+  resumeGeneration: string;
+  coverLetters: string;
+  applicationAnswers: string;
+  jobAnalysis: string;
+  visaReasoning: string;
+  codeGeneration: string;
+  fastFallback: string;
+};
+
 type CareerLearningInsight = {
   company: string;
   applied: number;
@@ -739,7 +756,129 @@ function Projects() {
 }
 
 function SettingsPanel() {
-  return <Workbench title="Settings" icon={<Settings />} fields={["Ollama model", "Python path", "Workspace folder", "Visa required", "Daily scan time", "Target skills"]} />;
+  const [models, setModels] = useState<LocalModel[]>([]);
+  const [preferences, setPreferences] = useState<AiModelPreferences>({
+    resumeGeneration: "qwen3:4b",
+    coverLetters: "qwen3:4b",
+    applicationAnswers: "qwen3:4b",
+    jobAnalysis: "qwen3:4b",
+    visaReasoning: "qwen3:4b",
+    codeGeneration: "qwen2.5-coder:3b",
+    fastFallback: "gemma3:4b"
+  });
+  const [testModel, setTestModel] = useState("qwen3:4b");
+  const [testPrompt, setTestPrompt] = useState("Analyze this in one sentence: Java Spring backend role with Kafka and Snowflake.");
+  const [testResult, setTestResult] = useState("");
+  const [status, setStatus] = useState("Loading model settings...");
+
+  async function loadAiModels() {
+    const response = await fetch("/api/settings/ai-models");
+    const data = await response.json();
+    setModels(data.models ?? []);
+    setPreferences(data.preferences);
+    setTestModel(data.preferences?.fastFallback ?? "gemma3:4b");
+    setStatus(`Detected ${(data.models ?? []).length} Ollama models`);
+  }
+
+  useEffect(() => {
+    loadAiModels().catch((error) => setStatus(`Could not load Ollama models: ${error}`));
+  }, []);
+
+  async function saveAiModels() {
+    setStatus("Saving AI model preferences...");
+    const response = await fetch("/api/settings/ai-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(preferences)
+    });
+    const data = await response.json();
+    setPreferences(data.preferences);
+    setModels(data.models ?? []);
+    setStatus("AI model preferences saved");
+  }
+
+  async function testAiModel() {
+    setStatus("Testing model...");
+    const response = await fetch("/api/settings/ai-models/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: testModel, prompt: testPrompt })
+    });
+    const data = await response.json();
+    const elapsed = typeof data.elapsed === "string" ? data.elapsed : `${Math.round((data.elapsed?.nano ?? 0) / 1000000)} ms`;
+    setTestResult(`${data.model} responded in ${elapsed}\n\n${data.text}${data.error ? `\n\nError: ${data.error}` : ""}`);
+    setStatus(data.fallback ? "Model test used fallback/error path" : "Model test complete");
+  }
+
+  function updateModel(key: keyof AiModelPreferences, value: string) {
+    setPreferences({ ...preferences, [key]: value });
+  }
+
+  const modelOptions = Array.from(new Set([...models.map((model) => model.name), "qwen3:4b", "qwen2.5-coder:3b", "gemma3:4b"]));
+
+  return (
+    <div className="space-y-6">
+      <header className="flex items-start justify-between gap-6">
+        <div>
+          <h2 className="flex items-center gap-3 text-3xl font-semibold"><Settings />AI Model Settings</h2>
+          <p className="mt-2 text-zinc-400">Task-specific Ollama routing optimized for an 8 GB local machine.</p>
+        </div>
+        <div className="flex gap-3">
+          <button className="button" onClick={loadAiModels} title="Detect installed Ollama models"><BrainCircuit size={18} />Detect</button>
+          <button className="button" onClick={saveAiModels} title="Save model preferences"><Settings size={18} />Save</button>
+        </div>
+      </header>
+
+      <div className="rounded border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</div>
+
+      <section className="panel space-y-4">
+        <h3 className="text-lg font-semibold">Task Models</h3>
+        <div className="grid grid-cols-3 gap-3">
+          <ModelSelect label="Resume generation" value={preferences.resumeGeneration} options={modelOptions} onChange={(value) => updateModel("resumeGeneration", value)} />
+          <ModelSelect label="Cover letters" value={preferences.coverLetters} options={modelOptions} onChange={(value) => updateModel("coverLetters", value)} />
+          <ModelSelect label="Application answers" value={preferences.applicationAnswers} options={modelOptions} onChange={(value) => updateModel("applicationAnswers", value)} />
+          <ModelSelect label="Job analysis" value={preferences.jobAnalysis} options={modelOptions} onChange={(value) => updateModel("jobAnalysis", value)} />
+          <ModelSelect label="Visa reasoning" value={preferences.visaReasoning} options={modelOptions} onChange={(value) => updateModel("visaReasoning", value)} />
+          <ModelSelect label="Code generation" value={preferences.codeGeneration} options={modelOptions} onChange={(value) => updateModel("codeGeneration", value)} />
+          <ModelSelect label="Fast fallback" value={preferences.fastFallback} options={modelOptions} onChange={(value) => updateModel("fastFallback", value)} />
+        </div>
+      </section>
+
+      <div className="grid grid-cols-[1fr_1fr] gap-5">
+        <section className="panel space-y-3">
+          <h3 className="text-lg font-semibold">Installed Models</h3>
+          <div className="max-h-80 space-y-2 overflow-auto">
+            {models.length === 0 && <p className="text-sm text-zinc-500">No models detected. Start Ollama or run `ollama list` locally.</p>}
+            {models.map((model) => (
+              <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={model.name}>
+                <div className="font-medium">{model.name}</div>
+                <div className="mt-1 text-xs text-zinc-500">{model.family} · {(model.size / 1024 / 1024 / 1024).toFixed(1)} GB</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel space-y-3">
+          <h3 className="text-lg font-semibold">Test Model</h3>
+          <ModelSelect label="Model" value={testModel} options={modelOptions} onChange={setTestModel} />
+          <textarea className="input min-h-32 w-full py-3" value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
+          <button className="button" onClick={testAiModel} title="Test selected model"><Play size={18} />Test</button>
+          <pre className="max-h-72 overflow-auto rounded border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{testResult}</pre>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ModelSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <label className="field-label">
+      {label}
+      <select className="input mt-1 w-full" value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
+  );
 }
 
 function Logs() {

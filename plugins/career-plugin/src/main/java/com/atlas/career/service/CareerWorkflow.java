@@ -277,6 +277,8 @@ public class CareerWorkflow {
                 .filter(job -> !historicallyBlocked(job.company()))
                 .filter(job -> job.match().overallMatch() >= preferences.minimumMatchScore())
                 .filter(job -> !preferences.visaRequired() || job.visa().score() >= 50)
+                .sorted(Comparator.comparing((JobRecord job) -> job.match().overallMatch()).reversed())
+                .limit(30)
                 .limit(preferences.maximumApplicationsPerDay())
                 .map(this::prepareApplication)
                 .toList();

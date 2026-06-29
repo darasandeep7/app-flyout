@@ -14,17 +14,25 @@ import org.springframework.web.client.RestClient;
 public class OllamaModelProvider implements ModelProvider, ModelCatalog {
     private final RestClient restClient;
     private final String defaultModel;
+    private final AiModelSettingsService modelSettings;
+    private List<LocalModel> cachedModels = List.of();
+    private Instant cachedAt = Instant.EPOCH;
 
     public OllamaModelProvider(
             @Value("${atlas.ollama.base-url:http://localhost:11434}") String baseUrl,
-            @Value("${atlas.ollama.default-text-model:}") String defaultModel
+            @Value("${atlas.ollama.default-text-model:}") String defaultModel,
+            AiModelSettingsService modelSettings
     ) {
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
         this.defaultModel = defaultModel;
+        this.modelSettings = modelSettings;
     }
 
     @Override
-    public List<LocalModel> availableModels() {
+    public synchronized List<LocalModel> availableModels() {
+        if (Duration.between(cachedAt, Instant.now()).toSeconds() < 15) {
+            return cachedModels;
+        }
         try {
             OllamaTagsResponse response = restClient.get()
                     .uri("/api/tags")
@@ -33,9 +41,11 @@ public class OllamaModelProvider implements ModelProvider, ModelCatalog {
             if (response == null || response.models() == null) {
                 return List.of();
             }
-            return response.models().stream()
+            cachedModels = response.models().stream()
                     .map(model -> new LocalModel(model.name(), model.details() == null ? "unknown" : model.details().family(), model.size(), model.modified_at()))
                     .toList();
+            cachedAt = Instant.now();
+            return cachedModels;
         } catch (RuntimeException ex) {
             return List.of();
         }
@@ -44,7 +54,7 @@ public class OllamaModelProvider implements ModelProvider, ModelCatalog {
     @Override
     public ChatResponse generate(ChatRequest request) {
         Instant started = Instant.now();
-        String model = chooseModel(request.model());
+        String model = chooseModel(request.model(), request.task());
         if (model.isBlank()) {
             return new ChatResponse("", "No Ollama model is configured or detected.", Duration.between(started, Instant.now()), Map.of(), true, "missing-model");
         }
@@ -68,14 +78,23 @@ public class OllamaModelProvider implements ModelProvider, ModelCatalog {
         }
     }
 
-    private String chooseModel(String requested) {
+    private String chooseModel(String requested, String task) {
         if (requested != null && !requested.isBlank()) {
             return requested;
+        }
+        List<String> installed = availableModels().stream().map(LocalModel::name).toList();
+        String taskModel = modelSettings.modelFor(task);
+        if (installed.contains(taskModel)) {
+            return taskModel;
+        }
+        String fallback = modelSettings.preferences().fastFallback();
+        if (installed.contains(fallback)) {
+            return fallback;
         }
         if (defaultModel != null && !defaultModel.isBlank()) {
             return defaultModel;
         }
-        return availableModels().stream().findFirst().map(LocalModel::name).orElse("");
+        return installed.stream().findFirst().orElse(taskModel == null ? "" : taskModel);
     }
 
     private Map<String, Object> normalizeRaw(Map<?, ?> raw) {
