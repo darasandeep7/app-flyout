@@ -13,6 +13,7 @@
 - Added Ollama-backed resume, cover letter, and answer generation from the Master Resume during application package preparation.
 - Added Browser Agent application execution for prepared packages with screenshots, action logs, uploads, field filling, and final-submit pauses.
 - Added application outcome tracking, local application history, and dashboard funnel counts from recorded outcomes.
+- Added company-level learning insights that prioritize or deprioritize future applications from historical outcomes.
 - Added Career Copilot as the primary Atlas plugin.
 - Added company knowledge base storage.
 - Added job analysis, visa intelligence, and match scoring endpoints.

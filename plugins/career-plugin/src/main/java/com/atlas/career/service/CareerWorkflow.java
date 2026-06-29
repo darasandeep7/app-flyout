@@ -8,6 +8,7 @@ import com.atlas.career.api.CareerDashboard;
 import com.atlas.career.domain.ApplicationExecutionResult;
 import com.atlas.career.domain.ApplicationHistoryRecord;
 import com.atlas.career.domain.ApplicationPackage;
+import com.atlas.career.domain.CareerLearningInsight;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.JobDiscoveryResult;
@@ -29,6 +30,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -92,6 +94,16 @@ public class CareerWorkflow {
 
     public List<ApplicationHistoryRecord> applicationHistory() {
         return repository.applicationHistory();
+    }
+
+    public List<CareerLearningInsight> learningInsights() {
+        return repository.applicationHistory().stream()
+                .collect(Collectors.groupingBy(ApplicationHistoryRecord::company))
+                .entrySet()
+                .stream()
+                .map(entry -> insight(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(CareerLearningInsight::score).reversed())
+                .toList();
     }
 
     public CareerPreferences preferences() {
@@ -225,6 +237,10 @@ public class CareerWorkflow {
         DuplicateAssessment duplicate = duplicateAssessment(request);
         JobIntelligence jobIntelligence = new JobIntelligence(intelligence.visa(), intelligence.ranking(), intelligence.recommendation(), duplicate);
         String companyId = company == null ? repository.companyId(request.company()) : company.id();
+        List<String> notes = request.companyId() == null || request.companyId().isBlank()
+                ? new ArrayList<>(List.of("Analyzed locally by Career Copilot."))
+                : new ArrayList<>(List.of("Analyzed locally by Career Copilot.", "Discovered by career page scanner."));
+        notes.addAll(learningNotes(request.company()));
         JobRecord job = new JobRecord(
                 repository.jobId(request.company(), request.title(), request.location()),
                 companyId,
@@ -241,9 +257,7 @@ public class CareerWorkflow {
                 jobIntelligence.ranking().overallMatch() >= 70 && jobIntelligence.visa().visaScore() >= 50,
                 Instant.now(),
                 Instant.now(),
-                request.companyId() == null || request.companyId().isBlank()
-                        ? List.of("Analyzed locally by Career Copilot.")
-                        : List.of("Analyzed locally by Career Copilot.", "Discovered by career page scanner.")
+                notes
         );
         return repository.saveJob(job);
     }
@@ -253,6 +267,7 @@ public class CareerWorkflow {
         return repository.jobs().stream()
                 .filter(applicationPackageService::shouldPrepare)
                 .filter(job -> !containsIgnoreCase(preferences.blacklistCompanies(), job.company()))
+                .filter(job -> !historicallyBlocked(job.company()))
                 .filter(job -> job.match().overallMatch() >= preferences.minimumMatchScore())
                 .filter(job -> !preferences.visaRequired() || job.visa().score() >= 50)
                 .limit(preferences.maximumApplicationsPerDay())
@@ -415,6 +430,34 @@ public class CareerWorkflow {
             case "GHOSTED" -> "GHOSTED";
             default -> status.trim().toUpperCase().replace(' ', '_');
         };
+    }
+
+    private CareerLearningInsight insight(String company, List<ApplicationHistoryRecord> records) {
+        int applied = count(records, "APPLIED");
+        int interviews = count(records, "INTERVIEW");
+        int offers = count(records, "OFFER");
+        int rejections = count(records, "REJECTED");
+        int blocked = count(records, "BLOCKED");
+        int score = applied * 5 + interviews * 25 + offers * 50 - rejections * 8 - blocked * 20;
+        String recommendation = score >= 40 ? "Prioritize" : score < 0 ? "Deprioritize" : "Keep watching";
+        return new CareerLearningInsight(company, applied, interviews, offers, rejections, blocked, score, recommendation);
+    }
+
+    private int count(List<ApplicationHistoryRecord> records, String status) {
+        return (int) records.stream().filter(record -> record.status().equals(status)).count();
+    }
+
+    private List<String> learningNotes(String company) {
+        return learningInsights().stream()
+                .filter(insight -> insight.company().equalsIgnoreCase(company))
+                .findFirst()
+                .map(insight -> List.of("Learning: " + insight.recommendation() + " " + insight.company() + " based on past outcomes."))
+                .orElse(List.of());
+    }
+
+    private boolean historicallyBlocked(String company) {
+        return learningInsights().stream()
+                .anyMatch(insight -> insight.company().equalsIgnoreCase(company) && insight.blocked() >= 2 && insight.score() < 0);
     }
 
     private String applicationStatus(JobIntelligence intelligence) {

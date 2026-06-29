@@ -152,6 +152,17 @@ type ApplicationHistoryRecord = {
   recordedAt: string;
 };
 
+type CareerLearningInsight = {
+  company: string;
+  applied: number;
+  interviews: number;
+  offers: number;
+  rejections: number;
+  blocked: number;
+  score: number;
+  recommendation: string;
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
@@ -213,6 +224,7 @@ function Career() {
   const [recommendations, setRecommendations] = useState<RecommendationView[]>([]);
   const [applications, setApplications] = useState<ApplicationPackage[]>([]);
   const [applicationHistory, setApplicationHistory] = useState<ApplicationHistoryRecord[]>([]);
+  const [learningInsights, setLearningInsights] = useState<CareerLearningInsight[]>([]);
   const [preferences, setPreferences] = useState<CareerPreferences | null>(null);
   const [preferredTitles, setPreferredTitles] = useState("");
   const [preferredSkills, setPreferredSkills] = useState("");
@@ -233,12 +245,13 @@ function Career() {
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, learningResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
       fetch("/api/plugins/career/intelligence/recommendations"),
       fetch("/api/plugins/career/applications"),
       fetch("/api/plugins/career/applications/history"),
+      fetch("/api/plugins/career/learning/insights"),
       fetch("/api/plugins/career/preferences"),
       fetch("/api/plugins/career/resume/master"),
       fetch("/api/plugins/career/resume/health")
@@ -248,6 +261,7 @@ function Career() {
     setRecommendations(await recommendationResponse.json());
     setApplications(await applicationResponse.json());
     setApplicationHistory(await historyResponse.json());
+    setLearningInsights(await learningResponse.json());
     const loadedPreferences = await preferenceResponse.json();
     setPreferences(loadedPreferences);
     syncPreferenceForm(loadedPreferences);
@@ -617,6 +631,24 @@ function Career() {
             </div>
           ))}
           {applicationHistory.length === 0 && <p className="text-sm text-zinc-500">No application history yet.</p>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <h3 className="mb-3 text-lg font-semibold">Learning Insights</h3>
+        <div className="space-y-3">
+          {learningInsights.slice(0, 8).map((item) => (
+            <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={item.company}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-medium">{item.company}</div>
+                  <div className="text-sm text-zinc-500">{item.recommendation} - score {item.score}</div>
+                </div>
+                <div className="text-xs text-zinc-500">Applied {item.applied} - Interviews {item.interviews} - Offers {item.offers} - Blocked {item.blocked}</div>
+              </div>
+            </div>
+          ))}
+          {learningInsights.length === 0 && <p className="text-sm text-zinc-500">Atlas will learn once application outcomes are recorded.</p>}
         </div>
       </section>
 

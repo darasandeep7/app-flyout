@@ -5,6 +5,7 @@ import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.CompanyRecord;
 import com.atlas.career.domain.ApplicationExecutionResult;
 import com.atlas.career.domain.ApplicationHistoryRecord;
+import com.atlas.career.domain.CareerLearningInsight;
 import com.atlas.career.domain.JobDiscoveryResult;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
@@ -69,6 +70,11 @@ public class CareerController {
     @GetMapping("/applications/history")
     public List<ApplicationHistoryRecord> applicationHistory() {
         return workflow.applicationHistory();
+    }
+
+    @GetMapping("/learning/insights")
+    public List<CareerLearningInsight> learningInsights() {
+        return workflow.learningInsights();
     }
 
     @GetMapping("/preferences")

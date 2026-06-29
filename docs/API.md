@@ -11,6 +11,7 @@
 - `POST /api/plugins/career/jobs/scan`
 - `GET /api/plugins/career/applications`
 - `GET /api/plugins/career/applications/history`
+- `GET /api/plugins/career/learning/insights`
 - `GET /api/plugins/career/preferences`
 - `POST /api/plugins/career/preferences`
 - `GET /api/plugins/career/resume/master`
