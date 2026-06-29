@@ -9,13 +9,19 @@ import com.atlas.career.domain.MasterResume;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Value;
@@ -305,6 +311,7 @@ public class CareerRepository {
             Files.createDirectories(careerFolder.resolve("reports"));
             Files.createDirectories(careerFolder.resolve("logs"));
             seedIfEmpty();
+            importSeedCompanies();
         } catch (IOException ex) {
             throw new IllegalStateException("Could not initialize career workspace", ex);
         }
@@ -344,6 +351,83 @@ public class CareerRepository {
         write(jobsPath(), List.of());
         write(preferencesPath(), CareerPreferences.defaults());
         write(masterResumePath(), MasterResume.empty());
+    }
+
+    private void importSeedCompanies() {
+        InputStream stream = getClass().getResourceAsStream("/career-seed-companies.csv");
+        if (stream == null) {
+            return;
+        }
+
+        Map<String, CompanyRecord> merged = new LinkedHashMap<>();
+        for (CompanyRecord company : companies()) {
+            merged.put(company.id(), company);
+        }
+
+        int before = merged.size();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            reader.lines()
+                    .skip(1)
+                    .map(String::trim)
+                    .filter(line -> !line.isBlank())
+                    .forEach(line -> addSeedCompany(line, merged));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not import career seed companies", ex);
+        }
+
+        if (merged.size() != before) {
+            merged.remove("sample-company");
+            List<CompanyRecord> companies = merged.values().stream()
+                    .sorted(Comparator.comparing(CompanyRecord::priority).reversed().thenComparing(CompanyRecord::name))
+                    .toList();
+            write(companiesPath(), companies);
+        }
+    }
+
+    private void addSeedCompany(String line, Map<String, CompanyRecord> merged) {
+        String[] parts = line.split(",", 2);
+        if (parts.length != 2) {
+            return;
+        }
+        String name = parts[0].trim();
+        String careerUrl = parts[1].trim();
+        if (name.isBlank() || careerUrl.isBlank()) {
+            return;
+        }
+        String id = Slug.of(name);
+        if (merged.containsKey(id)) {
+            return;
+        }
+        String website = careerUrl
+                .replaceFirst("^https://careers\\.", "https://www.")
+                .replaceFirst("^https://jobs\\.", "https://www.");
+        CompanyRecord company = new CompanyRecord(
+                id,
+                name,
+                "Technology",
+                website,
+                careerUrl,
+                "Unknown",
+                "Unknown",
+                "Unknown",
+                "Seed company. Atlas has not learned sponsorship history yet.",
+                50,
+                List.of("United States", "Remote"),
+                0,
+                0,
+                0,
+                0,
+                0,
+                5,
+                false,
+                Instant.EPOCH,
+                Instant.now(),
+                50,
+                "Seed company imported from Sandeep's starter target list.",
+                List.of(),
+                List.of("Seed company imported by Atlas Career Copilot.")
+        );
+        merged.put(id, company);
     }
 
     private void writeResumeVersion(String content) {
