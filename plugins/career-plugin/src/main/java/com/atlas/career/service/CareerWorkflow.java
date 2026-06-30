@@ -597,20 +597,27 @@ public class CareerWorkflow {
     }
 
     public List<ApplicationExecutionResult> executeReadyApplications() {
-        return repository.applications().stream()
+        List<ApplicationExecutionResult> results = new ArrayList<>();
+        List<ApplicationPackage> ready = repository.applications().stream()
                 .filter(application -> application.status().equals("WAITING_FOR_REVIEW")
                         || application.status().equals("REVIEWED")
                         || application.status().equals("APPROVED_FOR_BROWSER_AGENT"))
                 .sorted(Comparator.comparing(ApplicationPackage::recommendationConfidence).reversed())
                 .limit(repository.preferences().maximumApplicationsPerDay())
-                .map(application -> {
-                    try {
-                        return executeApplication(application.id());
-                    } catch (Exception ex) {
-                        return saveExecution(application, "PAUSED_FOR_MANUAL_REVIEW", "Unexpected application execution error", List.of(), List.of(), true, ex.getMessage());
-                    }
-                })
                 .toList();
+        for (ApplicationPackage application : ready) {
+            ApplicationExecutionResult result;
+            try {
+                result = executeApplication(application.id());
+            } catch (Exception ex) {
+                result = saveExecution(application, "PAUSED_FOR_MANUAL_REVIEW", "Unexpected application execution error", List.of(), List.of(), true, ex.getMessage());
+            }
+            results.add(result);
+            if (!result.status().equals("SUBMITTED") && !result.status().equals("APPLIED")) {
+                break;
+            }
+        }
+        return results;
     }
 
     public ApplicationHistoryRecord markApplication(String applicationId, String status, String note) {

@@ -6,6 +6,8 @@ import {
   BrainCircuit,
   BriefcaseBusiness,
   Building2,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   FileText,
   FolderKanban,
@@ -343,6 +345,7 @@ function Career() {
   const [trainingPattern, setTrainingPattern] = useState("");
   const [trainingFormat, setTrainingFormat] = useState("");
   const [trainingExample, setTrainingExample] = useState("");
+  const [recommendationsCollapsed, setRecommendationsCollapsed] = useState(true);
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
@@ -614,6 +617,77 @@ function Career() {
     return value.split(",").map((item) => item.trim()).filter(Boolean);
   }
 
+  const applyQueuePanel = (
+    <section className="panel">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">Apply Queue</h3>
+          <p className="mt-1 text-sm text-zinc-500">Review or launch prepared applications. Scan Jobs prepares new packages automatically; use Prepare Queue after changing scoring or preferences.</p>
+        </div>
+        <div className="flex gap-2">
+          <button className="button" onClick={runDailyPreparation} title="Prepare application queue"><ClipboardCheck size={18} />Prepare Queue</button>
+          <button className="button" onClick={applyReadyApplications} disabled={applications.length === 0} title="Apply ready queue sequentially"><BriefcaseBusiness size={18} />Apply Ready</button>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {applications.map((application) => (
+          <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={application.id}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium">{application.title}</div>
+                <div className="text-sm text-zinc-500">{application.company} - {application.status} - {application.recommendation} - {application.recommendationConfidence}%</div>
+              </div>
+              <div className="flex gap-2">
+                <button className="button" onClick={() => reviewApplication(application.id)} title="Review application"><FileText size={18} />Review</button>
+                <button className="button" onClick={() => executeApplication(application.id)} title="Apply with browser agent"><BriefcaseBusiness size={18} />Apply</button>
+                <button className="button" onClick={() => markApplication(application.id, "APPLIED", "Confirmed by Sandeep after browser review.")} title="Mark applied"><ClipboardCheck size={18} />Applied</button>
+                <button className="button" onClick={() => markApplication(application.id, "BLOCKED", "Blocked during application workflow.")} title="Mark blocked"><ShieldCheck size={18} />Block</button>
+              </div>
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-2 text-xs text-zinc-500">
+              <span>{application.resumePath}</span>
+              <span>{application.coverLetterPath}</span>
+              <span>{application.answersPath}</span>
+              <span>{application.reportPath}</span>
+            </div>
+          </div>
+        ))}
+        {applications.length === 0 && <p className="text-sm text-zinc-500">No prepared applications yet. Click Scan Jobs to discover and prepare jobs, or Prepare Queue if jobs are already in the Job Ranking Table.</p>}
+        {applicationReview && (
+          <div className="rounded border border-cyan-900 bg-zinc-950 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h4 className="font-semibold">Review: {applicationReview.applicationPackage.title}</h4>
+                <p className="text-sm text-zinc-500">{applicationReview.applicationPackage.company}</p>
+              </div>
+              <button className="button" onClick={saveApplicationReview} title="Save edited review"><ClipboardCheck size={18} />Save Review</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="field-label">Resume Preview<textarea className="input mt-1 min-h-72 w-full py-3" value={applicationReview.resume} onChange={(event) => setApplicationReview({ ...applicationReview, resume: event.target.value })} /></label>
+              <label className="field-label">Cover Letter Preview<textarea className="input mt-1 min-h-72 w-full py-3" value={applicationReview.coverLetter} onChange={(event) => setApplicationReview({ ...applicationReview, coverLetter: event.target.value })} /></label>
+            </div>
+            <div className="mt-3 space-y-3">
+              {applicationReview.answers.map((answer, index) => (
+                <label className="field-label block" key={answer.question}>
+                  {answer.question}
+                  <textarea className="input mt-1 min-h-24 w-full py-3" value={answer.answer} onChange={(event) => updateReviewAnswer(index, event.target.value)} />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+        {executionResult && (
+          <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
+            <div className="text-zinc-200">{executionResult.status}: {executionResult.pauseReason}</div>
+            <div className="mt-2 space-y-1 text-xs">{executionResult.actions.map((action) => <div key={action}>{action}</div>)}</div>
+            {executionResult.screenshots.length > 0 && <div className="mt-2 text-xs text-zinc-500">Screenshots: {executionResult.screenshots.join(", ")}</div>}
+            {executionResult.error && <div className="mt-2 text-xs text-red-300">{executionResult.error}</div>}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-6">
@@ -635,6 +709,8 @@ function Career() {
         <Metric icon={<FileText size={18} />} label="Waiting" value={applications.filter((item) => item.status === "WAITING_FOR_REVIEW").length} />
         <Metric icon={<ShieldCheck size={18} />} label="Visa Risk" value={dashboard?.blockedByVisa ?? 0} />
       </div>
+
+      {applyQueuePanel}
 
       <section className="panel space-y-4">
         <div className="flex items-center justify-between gap-4">
@@ -797,19 +873,27 @@ function Career() {
 
       <div className="grid grid-cols-2 gap-5">
         <section className="panel">
-          <h3 className="mb-3 text-lg font-semibold">Recommendation Queue</h3>
-          <div className="space-y-3">
-            {recommendations.map((item) => (
-              <div className="w-full rounded border border-zinc-800 bg-zinc-950 p-3 text-left" key={item.jobId}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium">{item.title}</span>
-                  <span className="text-sm text-cyan-300">{item.recommendation?.category ?? "UNSCORED"}</span>
+          <button className="flex w-full items-center justify-between gap-3 text-left" onClick={() => setRecommendationsCollapsed(!recommendationsCollapsed)} title="Toggle recommendation queue">
+            <div>
+              <h3 className="text-lg font-semibold">Recommendation Queue</h3>
+              <p className="mt-1 text-sm text-zinc-500">{recommendations.length} scored jobs. Expand to inspect rankings.</p>
+            </div>
+            {recommendationsCollapsed ? <ChevronRight size={22} /> : <ChevronDown size={22} />}
+          </button>
+          {!recommendationsCollapsed && (
+            <div className="mt-3 space-y-3">
+              {recommendations.map((item) => (
+                <div className="w-full rounded border border-zinc-800 bg-zinc-950 p-3 text-left" key={item.jobId}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium">{item.title}</span>
+                    <span className="text-sm text-cyan-300">{item.recommendation?.category ?? "UNSCORED"}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-zinc-500">{item.company} - {item.location} - Overall {item.ranking?.overallMatch ?? 0}% - Visa {item.ranking?.visaMatch ?? 0}%</p>
+                  <p className="mt-2 text-xs text-zinc-400">{item.recommendation?.explanation ?? "Analyze jobs to build the queue."}</p>
                 </div>
-                <p className="mt-1 text-sm text-zinc-500">{item.company} - {item.location} - Overall {item.ranking?.overallMatch ?? 0}% - Visa {item.ranking?.visaMatch ?? 0}%</p>
-                <p className="mt-2 text-xs text-zinc-400">{item.recommendation?.explanation ?? "Analyze jobs to build the queue."}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="panel">
@@ -833,68 +917,6 @@ function Career() {
           )}
         </section>
       </div>
-
-      <section className="panel">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold">Apply Queue</h3>
-          <button className="button" onClick={applyReadyApplications} disabled={applications.length === 0} title="Apply ready queue sequentially"><BriefcaseBusiness size={18} />Apply Ready</button>
-        </div>
-        <div className="space-y-3">
-          {applications.map((application) => (
-            <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={application.id}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-medium">{application.title}</div>
-                  <div className="text-sm text-zinc-500">{application.company} - {application.status} - {application.recommendation}</div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="button" onClick={() => reviewApplication(application.id)} title="Review application"><FileText size={18} />Review</button>
-                  <button className="button" onClick={() => executeApplication(application.id)} title="Apply with browser agent"><BriefcaseBusiness size={18} />Apply</button>
-                  <button className="button" onClick={() => markApplication(application.id, "APPLIED", "Confirmed by Sandeep after browser review.")} title="Mark applied"><ClipboardCheck size={18} />Applied</button>
-                  <button className="button" onClick={() => markApplication(application.id, "BLOCKED", "Blocked during application workflow.")} title="Mark blocked"><ShieldCheck size={18} />Block</button>
-                </div>
-              </div>
-              <div className="mt-2 grid grid-cols-4 gap-2 text-xs text-zinc-500">
-                <span>{application.resumePath}</span>
-                <span>{application.coverLetterPath}</span>
-                <span>{application.answersPath}</span>
-                <span>{application.reportPath}</span>
-              </div>
-            </div>
-          ))}
-          {applications.length === 0 && <p className="text-sm text-zinc-500">No prepared applications yet. Analyze a good job, then prepare the queue.</p>}
-          {applicationReview && (
-            <div className="rounded border border-cyan-900 bg-zinc-950 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h4 className="font-semibold">Review: {applicationReview.applicationPackage.title}</h4>
-                  <p className="text-sm text-zinc-500">{applicationReview.applicationPackage.company}</p>
-                </div>
-                <button className="button" onClick={saveApplicationReview} title="Save edited review"><ClipboardCheck size={18} />Save Review</button>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="field-label">Resume Preview<textarea className="input mt-1 min-h-72 w-full py-3" value={applicationReview.resume} onChange={(event) => setApplicationReview({ ...applicationReview, resume: event.target.value })} /></label>
-                <label className="field-label">Cover Letter Preview<textarea className="input mt-1 min-h-72 w-full py-3" value={applicationReview.coverLetter} onChange={(event) => setApplicationReview({ ...applicationReview, coverLetter: event.target.value })} /></label>
-              </div>
-              <div className="mt-3 space-y-3">
-                {applicationReview.answers.map((answer, index) => (
-                  <label className="field-label block" key={answer.question}>
-                    {answer.question}
-                    <textarea className="input mt-1 min-h-24 w-full py-3" value={answer.answer} onChange={(event) => updateReviewAnswer(index, event.target.value)} />
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-          {executionResult && (
-            <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
-              <div className="text-zinc-200">{executionResult.status}: {executionResult.pauseReason}</div>
-              <div className="mt-2 space-y-1 text-xs">{executionResult.actions.map((action) => <div key={action}>{action}</div>)}</div>
-              {executionResult.error && <div className="mt-2 text-xs text-red-300">{executionResult.error}</div>}
-            </div>
-          )}
-        </div>
-      </section>
 
       <section className="panel">
         <h3 className="mb-3 text-lg font-semibold">Recent Applications</h3>

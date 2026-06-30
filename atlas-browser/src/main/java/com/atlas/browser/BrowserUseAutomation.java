@@ -55,19 +55,34 @@ public class BrowserUseAutomation implements BrowserAutomation {
             Files.createDirectories(request.outputFolder());
             Path payload = request.outputFolder().resolve("browser-application-payload.json");
             Path result = request.outputFolder().resolve("browser-application-result.json");
+            Path progress = request.outputFolder().resolve("browser-application-progress.json");
             Path log = request.outputFolder().resolve("browser-application-worker.log");
             Files.deleteIfExists(result);
+            Files.deleteIfExists(progress);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(payload.toFile(), request);
             new ProcessBuilder(
                     pythonPath,
                     entrypoint,
                     "--application", payload.toString()
             ).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile())).start();
-            for (int attempt = 0; attempt < 120; attempt++) {
+            for (int attempt = 0; attempt < 240; attempt++) {
                 if (Files.exists(result)) {
                     return objectMapper.readValue(result.toFile(), BrowserApplicationResult.class);
                 }
                 Thread.sleep(500);
+            }
+            if (Files.exists(progress)) {
+                var root = objectMapper.readTree(progress.toFile());
+                return new BrowserApplicationResult(
+                        root.path("status").asText("BROWSER_AGENT_RUNNING"),
+                        root.path("pauseReason").asText("Browser Agent is still working"),
+                        objectMapper.convertValue(root.path("actions"), new com.fasterxml.jackson.core.type.TypeReference<>() {
+                        }),
+                        objectMapper.convertValue(root.path("screenshots"), new com.fasterxml.jackson.core.type.TypeReference<>() {
+                        }),
+                        false,
+                        root.path("error").asText("browser-still-running")
+                );
             }
             return new BrowserApplicationResult(
                     "PAUSED_FOR_MANUAL_REVIEW",

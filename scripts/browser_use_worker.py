@@ -15,6 +15,18 @@ def write_application_result(output: Path, payload: dict) -> None:
     print(json.dumps(payload), flush=True)
 
 
+def write_application_progress(output: Path, status: str, reason: str, actions: list, screenshots: list, error=None) -> None:
+    progress = output / "browser-application-progress.json"
+    progress.write_text(json.dumps({
+        "status": status,
+        "pauseReason": reason,
+        "actions": actions[-50:],
+        "screenshots": screenshots,
+        "fallback": False,
+        "error": error,
+    }, indent=2))
+
+
 def pause_with_browser(page, browser, output: Path, payload: dict, keep_open_ms: int = 600000) -> int:
     write_application_result(output, payload)
     try:
@@ -138,6 +150,19 @@ def has_human_gate(page):
     return None
 
 
+def form_gate(page, profile):
+    text = page.locator("body").inner_text(timeout=3000).lower()
+    email_fields = page.locator("input[type='email'], input[name*='email' i], input[id*='email' i]")
+    password_fields = page.locator("input[type='password']")
+    if password_fields.count() > 0 and email_fields.count() > 0 and not profile.get("defaultPassword"):
+        return "LOGIN_REQUIRED: email/password screen detected, but no default password is saved in User Profile"
+    if "create account" in text and password_fields.count() > 0 and not profile.get("defaultPassword"):
+        return "ACCOUNT_CREATION_REQUIRED: account creation screen detected, but no default password is saved in User Profile"
+    if "sign in" in text and password_fields.count() > 0:
+        return "LOGIN_REQUIRED"
+    return None
+
+
 def run_application(payload_path: Path) -> int:
     payload = json.loads(payload_path.read_text())
     profile = payload.get("userProfile") or {}
@@ -151,7 +176,7 @@ def run_application(payload_path: Path) -> int:
     try:
         from playwright.sync_api import sync_playwright
     except Exception as exc:
-        write_result({
+        write_application_result(output, {
             "status": "PAUSED_FOR_MANUAL_REVIEW",
             "pauseReason": "Playwright is not installed",
             "actions": actions,
@@ -167,17 +192,23 @@ def run_application(payload_path: Path) -> int:
             page = browser.new_page(viewport={"width": 1440, "height": 1200})
             page.goto(payload["url"], wait_until="domcontentloaded", timeout=45000)
             actions.append(f"Opened {payload['url']}")
+            write_application_progress(output, "OPENED_JOB_PAGE", "Opened job page and looking for apply controls", actions, screenshots)
 
             apply_links = page.get_by_role("link", name=re.compile("apply", re.I))
             apply_buttons = page.get_by_role("button", name=re.compile("apply", re.I))
             if apply_links.count() > 0:
                 apply_links.first.click(timeout=5000)
                 actions.append("Clicked apply link")
+                write_application_progress(output, "CLICKED_APPLY", "Clicked apply link and waiting for application form", actions, screenshots)
                 page.wait_for_load_state("domcontentloaded", timeout=15000)
             elif apply_buttons.count() > 0:
                 apply_buttons.first.click(timeout=5000)
                 actions.append("Clicked apply button")
+                write_application_progress(output, "CLICKED_APPLY", "Clicked apply button and waiting for application form", actions, screenshots)
                 page.wait_for_timeout(1500)
+            else:
+                actions.append("No Apply button detected on the current page")
+                write_application_progress(output, "APPLY_BUTTON_NOT_FOUND", "No Apply button was detected yet", actions, screenshots)
 
             for login_text in ["Sign in", "Log in", "Create account", "Apply manually", "Continue"]:
                 try:
@@ -186,11 +217,13 @@ def run_application(payload_path: Path) -> int:
                     if button.count() > 0:
                         button.first.click(timeout=2500)
                         actions.append(f"Clicked {login_text}")
+                        write_application_progress(output, "CLICKED_GATE_BUTTON", f"Clicked {login_text}", actions, screenshots)
                         page.wait_for_timeout(1000)
                         break
                     if link.count() > 0:
                         link.first.click(timeout=2500)
                         actions.append(f"Clicked {login_text}")
+                        write_application_progress(output, "CLICKED_GATE_LINK", f"Clicked {login_text}", actions, screenshots)
                         page.wait_for_timeout(1000)
                         break
                 except Exception:
@@ -210,6 +243,20 @@ def run_application(payload_path: Path) -> int:
                     "error": None,
                 })
 
+            login_gate = form_gate(page, profile)
+            if login_gate and not profile.get("defaultPassword"):
+                screenshot = screenshots_dir / "login-required.png"
+                page.screenshot(path=str(screenshot), full_page=True)
+                screenshots.append(str(screenshot))
+                return pause_with_browser(page, browser, output, {
+                    "status": "PAUSED_FOR_HUMAN",
+                    "pauseReason": login_gate,
+                    "actions": actions,
+                    "screenshots": screenshots,
+                    "fallback": False,
+                    "error": None,
+                })
+
             resume_path = payload.get("resumePath")
             cover_path = payload.get("coverLetterPath")
             file_inputs = page.locator("input[type='file']")
@@ -223,10 +270,12 @@ def run_application(payload_path: Path) -> int:
                     elif resume_path:
                         field.set_input_files(resume_path)
                         actions.append("Uploaded resume")
+                    write_application_progress(output, "UPLOADING_FILES", "Handling resume and cover letter uploads", actions, screenshots)
                 except Exception as exc:
                     actions.append(f"Skipped file upload field: {exc}")
 
             answers = payload.get("answers") or []
+            write_application_progress(output, "FILLING_FIELDS", "Filling profile and generated answer fields", actions, screenshots)
             for selector in ["textarea", "input[type='text']", "input[type='email']", "input[type='tel']", "input[type='password']", "input:not([type])"]:
                 fields = page.locator(selector)
                 for index in range(min(fields.count(), 80)):
@@ -239,10 +288,28 @@ def run_application(payload_path: Path) -> int:
                         if answer:
                             field.fill(answer[:3500], timeout=1500)
                             actions.append(f"Filled field: {label[:80]}")
+                            if len(actions) % 5 == 0:
+                                write_application_progress(output, "FILLING_FIELDS", "Filling profile and generated answer fields", actions, screenshots)
                     except Exception:
                         continue
 
+            login_gate = form_gate(page, profile)
+            if login_gate and "LOGIN_REQUIRED" in login_gate:
+                actions.append("Login or account page still requires manual review")
+                screenshot = screenshots_dir / "login-still-required.png"
+                page.screenshot(path=str(screenshot), full_page=True)
+                screenshots.append(str(screenshot))
+                return pause_with_browser(page, browser, output, {
+                    "status": "PAUSED_FOR_HUMAN",
+                    "pauseReason": login_gate,
+                    "actions": actions,
+                    "screenshots": screenshots,
+                    "fallback": False,
+                    "error": None,
+                })
+
             selects = page.locator("select")
+            write_application_progress(output, "SELECTING_OPTIONS", "Selecting dropdown values", actions, screenshots)
             for index in range(min(selects.count(), 30)):
                 field = selects.nth(index)
                 try:
@@ -288,9 +355,10 @@ def run_application(payload_path: Path) -> int:
                 next_button = page.get_by_role("button", name=re.compile("next|continue|save and continue|review", re.I))
                 if next_button.count() == 0:
                     break
-                screenshot = screenshots_dir / f"completed-page-{step + 1}.png"
-                page.screenshot(path=str(screenshot), full_page=True)
-                screenshots.append(str(screenshot))
+                    screenshot = screenshots_dir / f"completed-page-{step + 1}.png"
+                    page.screenshot(path=str(screenshot), full_page=True)
+                    screenshots.append(str(screenshot))
+                    write_application_progress(output, "ADVANCING_APPLICATION", f"Completed page {step + 1}; clicking next", actions, screenshots)
                 try:
                     next_button.first.click(timeout=3500)
                     actions.append("Advanced to next application page")
