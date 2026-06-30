@@ -308,7 +308,7 @@ public class CareerWorkflow {
                 ));
                 saved++;
             }
-            messages.add(updatedCompany.name() + ": " + page.jobs().size() + " jobs found via " + page.atsPlatform());
+            messages.add(updatedCompany.name() + ": " + page.jobs().size() + " high-quality job pages found via " + page.atsPlatform());
         }
         List<ApplicationPackage> prepared = runDailyPreparation();
         if (!prepared.isEmpty()) {
