@@ -102,7 +102,7 @@ public class CareerController {
     }
 
     @DeleteMapping("/memory/{id}")
-    public void deleteMemory(@org.springframework.web.bind.annotation.PathVariable String id) {
+    public void deleteMemory(@org.springframework.web.bind.annotation.PathVariable("id") String id) {
         workflow.deleteMemory(id);
     }
 
@@ -152,22 +152,22 @@ public class CareerController {
     }
 
     @PostMapping("/applications/{applicationId}/approve")
-    public ApplicationPackage approveApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
+    public ApplicationPackage approveApplication(@org.springframework.web.bind.annotation.PathVariable("applicationId") String applicationId) {
         return workflow.approveApplication(applicationId);
     }
 
     @GetMapping("/applications/{applicationId}/review")
-    public CareerWorkflow.ApplicationReview applicationReview(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
+    public CareerWorkflow.ApplicationReview applicationReview(@org.springframework.web.bind.annotation.PathVariable("applicationId") String applicationId) {
         return workflow.applicationReview(applicationId);
     }
 
     @PostMapping("/applications/{applicationId}/review")
-    public ApplicationPackage saveApplicationReview(@org.springframework.web.bind.annotation.PathVariable String applicationId, @RequestBody CareerWorkflow.ApplicationReview review) {
+    public ApplicationPackage saveApplicationReview(@org.springframework.web.bind.annotation.PathVariable("applicationId") String applicationId, @RequestBody CareerWorkflow.ApplicationReview review) {
         return workflow.saveApplicationReview(applicationId, review);
     }
 
     @PostMapping("/applications/{applicationId}/execute")
-    public ApplicationExecutionResult executeApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
+    public ApplicationExecutionResult executeApplication(@org.springframework.web.bind.annotation.PathVariable("applicationId") String applicationId) {
         return workflow.executeApplication(applicationId);
     }
 
@@ -177,7 +177,7 @@ public class CareerController {
     }
 
     @PostMapping("/applications/{applicationId}/mark")
-    public ApplicationHistoryRecord markApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId, @RequestBody MarkApplicationRequest request) {
+    public ApplicationHistoryRecord markApplication(@org.springframework.web.bind.annotation.PathVariable("applicationId") String applicationId, @RequestBody MarkApplicationRequest request) {
         return workflow.markApplication(applicationId, request.status(), request.note());
     }
 
