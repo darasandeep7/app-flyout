@@ -429,8 +429,12 @@ public class CareerWorkflow {
                 .filter(item -> item.id().equals(applicationId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
-        JobRecord job = repository.findJob(applicationPackage.jobId())
-                .orElseThrow(() -> new IllegalArgumentException("Job not found for application package: " + applicationPackage.jobId()));
+        if (!applicationPackage.status().equals("APPROVED_FOR_BROWSER_AGENT")) {
+            applicationPackage = approveApplication(applicationId);
+        }
+        String jobId = applicationPackage.jobId();
+        JobRecord job = repository.findJob(jobId)
+                .orElseThrow(() -> new IllegalArgumentException("Job not found for application package: " + jobId));
         if (job.url() == null || job.url().isBlank()) {
             return saveExecution(applicationPackage, "PAUSED_FOR_MANUAL_REVIEW", "Job URL is missing", List.of(), List.of(), true, "missing-job-url");
         }
@@ -445,6 +449,23 @@ public class CareerWorkflow {
                 profileMap(repository.userProfile())
         ));
         return saveExecution(applicationPackage, result.status(), result.pauseReason(), result.actions(), result.screenshots(), result.fallback(), result.error());
+    }
+
+    public List<ApplicationExecutionResult> executeReadyApplications() {
+        return repository.applications().stream()
+                .filter(application -> application.status().equals("WAITING_FOR_REVIEW")
+                        || application.status().equals("REVIEWED")
+                        || application.status().equals("APPROVED_FOR_BROWSER_AGENT"))
+                .sorted(Comparator.comparing(ApplicationPackage::recommendationConfidence).reversed())
+                .limit(repository.preferences().maximumApplicationsPerDay())
+                .map(application -> {
+                    try {
+                        return executeApplication(application.id());
+                    } catch (Exception ex) {
+                        return saveExecution(application, "PAUSED_FOR_MANUAL_REVIEW", "Unexpected application execution error", List.of(), List.of(), true, ex.getMessage());
+                    }
+                })
+                .toList();
     }
 
     public ApplicationHistoryRecord markApplication(String applicationId, String status, String note) {

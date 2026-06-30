@@ -545,6 +545,15 @@ function Career() {
     await load();
   }
 
+  async function applyReadyApplications() {
+    setStatus("Applying ready queue sequentially...");
+    const response = await fetch("/api/plugins/career/applications/apply-ready", { method: "POST" });
+    const results = await response.json();
+    setExecutionResult(results[results.length - 1] ?? null);
+    setStatus(`Processed ${results.length} ready applications`);
+    await load();
+  }
+
   async function markApplication(applicationId: string, nextStatus: string, note: string) {
     setStatus(`Marking application ${nextStatus.toLowerCase()}...`);
     await fetch(`/api/plugins/career/applications/${applicationId}/mark`, {
@@ -805,7 +814,10 @@ function Career() {
       </div>
 
       <section className="panel">
-        <h3 className="mb-3 text-lg font-semibold">Apply Queue</h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold">Apply Queue</h3>
+          <button className="button" onClick={applyReadyApplications} disabled={applications.length === 0} title="Apply ready queue sequentially"><BriefcaseBusiness size={18} />Apply Ready</button>
+        </div>
         <div className="space-y-3">
           {applications.map((application) => (
             <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={application.id}>
@@ -816,8 +828,7 @@ function Career() {
                 </div>
                 <div className="flex gap-2">
                   <button className="button" onClick={() => reviewApplication(application.id)} title="Review application"><FileText size={18} />Review</button>
-                  <button className="button" onClick={() => approveApplication(application.id)} title="Approve application"><Play size={18} />Approve</button>
-                  <button className="button" onClick={() => executeApplication(application.id)} title="Run browser agent"><BriefcaseBusiness size={18} />Execute</button>
+                  <button className="button" onClick={() => executeApplication(application.id)} title="Apply with browser agent"><BriefcaseBusiness size={18} />Apply</button>
                   <button className="button" onClick={() => markApplication(application.id, "APPLIED", "Confirmed by Sandeep after browser review.")} title="Mark applied"><ClipboardCheck size={18} />Applied</button>
                   <button className="button" onClick={() => markApplication(application.id, "BLOCKED", "Blocked during application workflow.")} title="Mark blocked"><ShieldCheck size={18} />Block</button>
                 </div>

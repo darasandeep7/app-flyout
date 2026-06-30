@@ -149,6 +149,11 @@ public class CareerController {
         return workflow.executeApplication(applicationId);
     }
 
+    @PostMapping("/applications/apply-ready")
+    public List<ApplicationExecutionResult> applyReadyApplications() {
+        return workflow.executeReadyApplications();
+    }
+
     @PostMapping("/applications/{applicationId}/mark")
     public ApplicationHistoryRecord markApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId, @RequestBody MarkApplicationRequest request) {
         return workflow.markApplication(applicationId, request.status(), request.note());
