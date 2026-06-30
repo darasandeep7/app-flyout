@@ -54,18 +54,29 @@ public class BrowserUseAutomation implements BrowserAutomation {
         try {
             Files.createDirectories(request.outputFolder());
             Path payload = request.outputFolder().resolve("browser-application-payload.json");
+            Path result = request.outputFolder().resolve("browser-application-result.json");
+            Path log = request.outputFolder().resolve("browser-application-worker.log");
+            Files.deleteIfExists(result);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(payload.toFile(), request);
-            Process process = new ProcessBuilder(
+            new ProcessBuilder(
                     pythonPath,
                     entrypoint,
                     "--application", payload.toString()
-            ).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            int exit = process.waitFor();
-            if (exit != 0) {
-                return browserFallback("browser worker exited " + exit + ": " + output);
+            ).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile())).start();
+            for (int attempt = 0; attempt < 120; attempt++) {
+                if (Files.exists(result)) {
+                    return objectMapper.readValue(result.toFile(), BrowserApplicationResult.class);
+                }
+                Thread.sleep(500);
             }
-            return objectMapper.readValue(output, BrowserApplicationResult.class);
+            return new BrowserApplicationResult(
+                    "PAUSED_FOR_MANUAL_REVIEW",
+                    "Browser Agent started, but no completion signal was received yet",
+                    List.of("Browser worker is still running. Check the opened browser window."),
+                    List.of(),
+                    true,
+                    "browser-result-timeout"
+            );
         } catch (IOException ex) {
             return browserFallback(ex.getMessage());
         } catch (InterruptedException ex) {

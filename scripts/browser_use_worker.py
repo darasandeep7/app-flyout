@@ -9,6 +9,24 @@ def write_result(payload: dict) -> None:
     print(json.dumps(payload))
 
 
+def write_application_result(output: Path, payload: dict) -> None:
+    result = output / "browser-application-result.json"
+    result.write_text(json.dumps(payload, indent=2))
+    print(json.dumps(payload), flush=True)
+
+
+def pause_with_browser(page, browser, output: Path, payload: dict, keep_open_ms: int = 600000) -> int:
+    write_application_result(output, payload)
+    try:
+        page.wait_for_timeout(keep_open_ms)
+    finally:
+        try:
+            browser.close()
+        except Exception:
+            pass
+    return 0
+
+
 def text_for_answer(answers, label):
     normalized = (label or "").lower()
     for item in answers:
@@ -183,8 +201,7 @@ def run_application(payload_path: Path) -> int:
                 screenshot = screenshots_dir / "human-gate.png"
                 page.screenshot(path=str(screenshot), full_page=True)
                 screenshots.append(str(screenshot))
-                browser.close()
-                write_result({
+                return pause_with_browser(page, browser, output, {
                     "status": "PAUSED_FOR_HUMAN",
                     "pauseReason": gate,
                     "actions": actions,
@@ -192,7 +209,6 @@ def run_application(payload_path: Path) -> int:
                     "fallback": False,
                     "error": None,
                 })
-                return 0
 
             resume_path = payload.get("resumePath")
             cover_path = payload.get("coverLetterPath")
@@ -261,8 +277,7 @@ def run_application(payload_path: Path) -> int:
                     screenshot = screenshots_dir / f"human-gate-{step}.png"
                     page.screenshot(path=str(screenshot), full_page=True)
                     screenshots.append(str(screenshot))
-                    browser.close()
-                    write_result({
+                    return pause_with_browser(page, browser, output, {
                         "status": "PAUSED_FOR_HUMAN",
                         "pauseReason": gate,
                         "actions": actions,
@@ -270,7 +285,6 @@ def run_application(payload_path: Path) -> int:
                         "fallback": False,
                         "error": None,
                     })
-                    return 0
                 next_button = page.get_by_role("button", name=re.compile("next|continue|save and continue|review", re.I))
                 if next_button.count() == 0:
                     break
@@ -292,8 +306,7 @@ def run_application(payload_path: Path) -> int:
             screenshots.append(str(screenshot))
             status = "PAUSED_BEFORE_FINAL_SUBMISSION" if final_submit.count() > 0 else "PAUSED_FOR_MANUAL_REVIEW"
             reason = "Final submission requires approval" if final_submit.count() > 0 else "Review remaining fields manually"
-            browser.close()
-            write_result({
+            return pause_with_browser(page, browser, output, {
                 "status": status,
                 "pauseReason": reason,
                 "actions": actions,
@@ -301,7 +314,6 @@ def run_application(payload_path: Path) -> int:
                 "fallback": False,
                 "error": None,
             })
-            return 0
     except Exception as exc:
         screenshot = screenshots_dir / "automation-error.png"
         try:
@@ -309,7 +321,7 @@ def run_application(payload_path: Path) -> int:
             screenshots.append(str(screenshot))
         except Exception:
             pass
-        write_result({
+        write_application_result(output, {
             "status": "PAUSED_FOR_MANUAL_REVIEW",
             "pauseReason": "Unexpected browser automation error",
             "actions": actions,
