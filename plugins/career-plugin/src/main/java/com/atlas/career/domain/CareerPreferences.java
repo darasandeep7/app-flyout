@@ -58,11 +58,11 @@ public record CareerPreferences(
                 "Hybrid acceptable",
                 0,
                 true,
-                80,
+                70,
                 List.of(),
                 List.of(),
                 "08:00",
-                5
+                10
         );
     }
 }

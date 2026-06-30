@@ -42,19 +42,25 @@ public class ApplicationPackageService {
         if (containsIgnoreCase(preferences.blacklistCompanies(), job.company())) {
             return false;
         }
-        if (job.match().overallMatch() < preferences.minimumMatchScore()) {
+        int threshold = preparationThreshold(preferences);
+        if (job.match().overallMatch() < threshold) {
             return false;
         }
         if (preferences.visaRequired() && job.visa().score() < 50) {
             return false;
         }
         if (job.intelligence() == null || job.intelligence().recommendation() == null) {
-            return job.match().overallMatch() >= preferences.minimumMatchScore();
+            return job.match().overallMatch() >= threshold;
         }
         RecommendationCategory category = job.intelligence().recommendation().category();
         return category == RecommendationCategory.APPLY_TODAY
                 || category == RecommendationCategory.EXCELLENT_MATCH
-                || category == RecommendationCategory.GOOD_MATCH;
+                || category == RecommendationCategory.GOOD_MATCH
+                || category == RecommendationCategory.INTERESTING;
+    }
+
+    private int preparationThreshold(CareerPreferences preferences) {
+        return Math.max(65, Math.min(75, preferences.minimumMatchScore()));
     }
 
     public ApplicationPackage create(JobRecord job) {

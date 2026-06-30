@@ -55,6 +55,7 @@ public class CareerWorkflow {
     private final ResumeIntelligenceService resumeIntelligence;
     private final JobDiscoveryService jobDiscovery;
     private final BrowserAutomation browserAutomation;
+    private boolean scoresRecalculated;
 
     public CareerWorkflow(CareerRepository repository, VisaIntelligenceService visaIntelligence, MatchEngine matchEngine, CareerIntelligenceEngine intelligenceEngine, CompanyIntelligenceService companyIntelligence, ApplicationPackageService applicationPackageService, ResumeIntelligenceService resumeIntelligence, JobDiscoveryService jobDiscovery, BrowserAutomation browserAutomation) {
         this.repository = repository;
@@ -70,6 +71,7 @@ public class CareerWorkflow {
 
     public CareerDashboard dashboard() {
         repository.importSeedCompanies();
+        recalculateStoredJobScores();
         List<CompanyRecord> companies = repository.companies();
         List<JobRecord> jobs = repository.jobs();
         List<JobRecord> topMatches = jobs.stream()
@@ -99,6 +101,7 @@ public class CareerWorkflow {
     }
 
     public List<JobRecord> jobs() {
+        recalculateStoredJobScores();
         return repository.jobs();
     }
 
@@ -184,7 +187,9 @@ public class CareerWorkflow {
     }
 
     public CareerPreferences savePreferences(CareerPreferences preferences) {
-        return repository.savePreferences(preferences);
+        CareerPreferences saved = repository.savePreferences(preferences);
+        scoresRecalculated = false;
+        return saved;
     }
 
     public UserProfile userProfile() {
@@ -202,7 +207,9 @@ public class CareerWorkflow {
     }
 
     public MasterResume saveMasterResume(MasterResume masterResume) {
-        return repository.saveMasterResume(masterResume);
+        MasterResume saved = repository.saveMasterResume(masterResume);
+        scoresRecalculated = false;
+        return saved;
     }
 
     public ResumeHealth resumeHealth() {
@@ -311,6 +318,7 @@ public class CareerWorkflow {
             messages.add(updatedCompany.name() + ": " + page.jobs().size() + " high-quality job pages found via " + page.atsPlatform());
         }
         List<ApplicationPackage> prepared = runDailyPreparation();
+        messages.add(queueSummary(repository.jobs(), repository.preferences(), prepared.size()));
         if (!prepared.isEmpty()) {
             messages.add("Prepared " + prepared.size() + " application packages for the Apply Queue.");
         }
@@ -358,20 +366,108 @@ public class CareerWorkflow {
     }
 
     public List<ApplicationPackage> runDailyPreparation() {
+        recalculateStoredJobScores();
         CareerPreferences preferences = repository.preferences();
+        int threshold = preparationThreshold(preferences);
         return repository.jobs().stream()
                 .filter(this::fieldRelevant)
                 .filter(job -> !hasActivePackage(job.id()))
                 .filter(applicationPackageService::shouldPrepare)
                 .filter(job -> !containsIgnoreCase(preferences.blacklistCompanies(), job.company()))
                 .filter(job -> !historicallyBlocked(job.company()))
-                .filter(job -> job.match().overallMatch() >= preferences.minimumMatchScore())
+                .filter(job -> job.match().overallMatch() >= threshold)
                 .filter(job -> !preferences.visaRequired() || job.visa().score() >= 50)
                 .sorted(Comparator.comparing((JobRecord job) -> job.match().overallMatch()).reversed())
                 .limit(30)
                 .limit(preferences.maximumApplicationsPerDay())
                 .map(this::prepareApplication)
                 .toList();
+    }
+
+    private String queueSummary(List<JobRecord> jobs, CareerPreferences preferences, int prepared) {
+        int threshold = preparationThreshold(preferences);
+        long fieldRelevant = jobs.stream().filter(this::fieldRelevant).count();
+        long scoreReady = jobs.stream()
+                .filter(this::fieldRelevant)
+                .filter(job -> job.match().overallMatch() >= threshold)
+                .count();
+        long visaReady = jobs.stream()
+                .filter(this::fieldRelevant)
+                .filter(job -> job.match().overallMatch() >= threshold)
+                .filter(job -> !preferences.visaRequired() || job.visa().score() >= 50)
+                .count();
+        long alreadyPackaged = jobs.stream()
+                .filter(this::fieldRelevant)
+                .filter(job -> job.match().overallMatch() >= threshold)
+                .filter(job -> !preferences.visaRequired() || job.visa().score() >= 50)
+                .filter(job -> hasActivePackage(job.id()))
+                .count();
+        return "Apply Queue filter: " + fieldRelevant + " field-relevant jobs, "
+                + scoreReady + " above queue score " + threshold + ", "
+                + visaReady + " visa-compatible, "
+                + alreadyPackaged + " already packaged, "
+                + prepared + " newly prepared.";
+    }
+
+    private int preparationThreshold(CareerPreferences preferences) {
+        return Math.max(65, Math.min(75, preferences.minimumMatchScore()));
+    }
+
+    private synchronized void recalculateStoredJobScores() {
+        if (scoresRecalculated) {
+            return;
+        }
+        List<JobRecord> jobs = repository.jobs();
+        for (JobRecord job : jobs) {
+            CompanyRecord company = repository.findCompany(job.companyId()).orElse(null);
+            VisaAssessment visa = visaIntelligence.assess(job.description(), company);
+            MatchAssessment match = matchEngine.score(job.title(), job.location(), job.description(), "", visa);
+            var intelligence = intelligenceEngine.evaluate(
+                    new VisaAnalysisRequest(job.company(), job.title(), job.description(), company == null ? 0 : company.visaConfidence(), company == null ? List.of() : company.learningHistory()),
+                    new JobIntelligenceRequest(job.company(), job.title(), job.location(), "", remoteStatus(job.location()), Instant.now(), job.description(), List.of(), experienceLevel(job.title(), job.description()), null),
+                    company != null && company.blocked(),
+                    appliedStatus(job.applicationStatus())
+            );
+            JobIntelligence updatedIntelligence = new JobIntelligence(
+                    intelligence.visa(),
+                    intelligence.ranking(),
+                    intelligence.recommendation(),
+                    job.intelligence() == null ? null : job.intelligence().duplicate()
+            );
+            repository.saveJob(new JobRecord(
+                    job.id(),
+                    job.companyId(),
+                    job.company(),
+                    job.title(),
+                    job.location(),
+                    job.url(),
+                    job.description(),
+                    visa,
+                    match,
+                    updatedIntelligence,
+                    refreshedStatus(job.applicationStatus(), updatedIntelligence),
+                    match.overallMatch() >= 75 && visa.score() >= 50,
+                    match.overallMatch() >= 70 && visa.score() >= 50,
+                    job.discoveredAt(),
+                    Instant.now(),
+                    job.notes()
+            ));
+        }
+        scoresRecalculated = true;
+    }
+
+    private boolean appliedStatus(String status) {
+        return status != null && status.toLowerCase(Locale.ROOT).contains("applied");
+    }
+
+    private String refreshedStatus(String current, JobIntelligence intelligence) {
+        if (current == null || current.isBlank()
+                || current.equalsIgnoreCase("Discovered")
+                || current.equalsIgnoreCase("Ready to apply")
+                || current.equalsIgnoreCase("Skipped - visa risk")) {
+            return applicationStatus(intelligence);
+        }
+        return current;
     }
 
     private boolean hasActivePackage(String jobId) {
