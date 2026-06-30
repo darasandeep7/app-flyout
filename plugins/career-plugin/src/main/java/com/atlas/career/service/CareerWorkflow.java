@@ -17,6 +17,7 @@ import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
 import com.atlas.career.domain.MatchAssessment;
+import com.atlas.career.domain.MemoryRecord;
 import com.atlas.career.domain.UserProfile;
 import com.atlas.career.domain.VisaAssessment;
 import com.atlas.careerintelligence.CareerIntelligenceEngine;
@@ -31,7 +32,10 @@ import com.atlas.visa.VisaAnalysisRequest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
@@ -106,6 +110,44 @@ public class CareerWorkflow {
         return repository.applicationHistory();
     }
 
+    public List<MemoryRecord> memories() {
+        return repository.memories();
+    }
+
+    public MemoryRecord saveMemory(MemoryRecord memory) {
+        Instant now = Instant.now();
+        String id = memory.id() == null || memory.id().isBlank()
+                ? com.atlas.common.Slug.of(memory.type() + "-" + memory.scope() + "-" + memory.key() + "-" + now.toEpochMilli())
+                : memory.id();
+        return repository.saveMemory(new MemoryRecord(
+                id,
+                blank(memory.type(), "note"),
+                blank(memory.scope(), "global"),
+                blank(memory.key(), id),
+                normalizeIntent(memory.intent() == null || memory.intent().isBlank() ? memory.question() : memory.intent()),
+                blank(memory.question(), ""),
+                blank(memory.answer(), ""),
+                blank(memory.company(), ""),
+                blank(memory.ats(), ""),
+                memory.data() == null ? Map.of() : memory.data(),
+                clamp(memory.confidence() <= 0 ? 70 : memory.confidence(), 1, 100),
+                Math.max(0, memory.usageCount()),
+                blank(memory.source(), "user"),
+                memory.createdAt() == null ? now : memory.createdAt(),
+                memory.lastUsed() == null ? now : memory.lastUsed(),
+                now
+        ));
+    }
+
+    public void deleteMemory(String id) {
+        repository.deleteMemory(id);
+    }
+
+    public List<MemoryRecord> importMemories(List<MemoryRecord> memories) {
+        repository.replaceMemories(memories == null ? List.of() : memories);
+        return repository.memories();
+    }
+
     public List<AnswerTrainingRule> answerTrainingRules() {
         return repository.answerTrainingRules();
     }
@@ -150,7 +192,9 @@ public class CareerWorkflow {
     }
 
     public UserProfile saveUserProfile(UserProfile profile) {
-        return repository.saveUserProfile(profile);
+        UserProfile saved = repository.saveUserProfile(profile);
+        learnProfile(saved);
+        return saved;
     }
 
     public MasterResume masterResume() {
@@ -405,6 +449,9 @@ public class CareerWorkflow {
         repository.writeApplicationBytes(applicationPackage, applicationPackage.coverLetterPath(), pdf(review.coverLetter()));
         repository.writeApplicationBytes(applicationPackage, folder + "/cover-letter.docx", docx(review.coverLetter()));
         repository.writeApplicationArtifact(applicationPackage, applicationPackage.answersPath(), review.answers());
+        for (var answer : review.answers()) {
+            rememberAnswer(answer.question(), answer.answer(), applicationPackage.company(), "user-approved");
+        }
         return repository.saveApplication(new ApplicationPackage(
                 applicationPackage.id(),
                 applicationPackage.jobId(),
@@ -448,7 +495,9 @@ public class CareerWorkflow {
                         .toList(),
                 profileMap(repository.userProfile())
         ));
-        return saveExecution(applicationPackage, result.status(), result.pauseReason(), result.actions(), result.screenshots(), result.fallback(), result.error());
+        ApplicationExecutionResult execution = saveExecution(applicationPackage, result.status(), result.pauseReason(), result.actions(), result.screenshots(), result.fallback(), result.error());
+        learnExecution(applicationPackage, job, execution);
+        return execution;
     }
 
     public List<ApplicationExecutionResult> executeReadyApplications() {
@@ -574,6 +623,119 @@ public class CareerWorkflow {
             case "GHOSTED" -> "GHOSTED";
             default -> status.trim().toUpperCase().replace(' ', '_');
         };
+    }
+
+    private void learnProfile(UserProfile profile) {
+        rememberProfile("preferred_name", "Preferred name", profile.name());
+        rememberProfile("email", "Email", profile.email());
+        rememberProfile("phone", "Phone number", profile.phone());
+        rememberProfile("address", "Address", profile.address());
+        rememberProfile("linkedin", "LinkedIn", profile.linkedin());
+        rememberProfile("github", "GitHub", profile.github());
+        rememberProfile("portfolio", "Portfolio", profile.portfolio());
+        rememberProfile("work_authorization", "Work authorization", profile.workAuthorization());
+        rememberProfile("sponsorship_required", "Will you require sponsorship?", profile.sponsorshipRequirement());
+        rememberProfile("education", "Education", profile.education());
+        rememberProfile("employment_history", "Employment history", profile.employmentHistory());
+    }
+
+    private void rememberProfile(String intent, String question, String answer) {
+        if (answer == null || answer.isBlank()) {
+            return;
+        }
+        remember("question", "global", intent, intent, question, answer, "", "", Map.of(), "user", 85);
+    }
+
+    private void rememberAnswer(String question, String answer, String company, String source) {
+        if (question == null || question.isBlank() || answer == null || answer.isBlank()) {
+            return;
+        }
+        String intent = normalizeIntent(question);
+        remember("approved_answer", "global", intent, intent, question, answer, company, "", Map.of("jobCategory", "career_application"), source, 85);
+    }
+
+    private void learnExecution(ApplicationPackage applicationPackage, JobRecord job, ApplicationExecutionResult execution) {
+        CompanyRecord company = repository.findCompany(job.companyId()).orElse(null);
+        String ats = company == null ? "Generic" : company.atsPlatform();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", execution.status());
+        data.put("pauseReason", execution.pauseReason());
+        data.put("actions", execution.actions());
+        data.put("screenshots", execution.screenshots().stream().map(Object::toString).toList());
+        data.put("error", execution.error());
+        remember("company_memory", job.company(), applicationPackage.id(), "", "", execution.pauseReason(), job.company(), ats, data, "browser", execution.fallback() ? 45 : 75);
+        remember("ats_memory", ats, job.company() + "-" + applicationPackage.id(), "", "", execution.pauseReason(), job.company(), ats, data, "browser", execution.fallback() ? 45 : 75);
+        if (execution.error() != null && !execution.error().isBlank()) {
+            remember("workflow_memory", job.company(), "failure-" + applicationPackage.id(), "browser_failure", "Browser failure", execution.error(), job.company(), ats, data, "browser", 40);
+        }
+    }
+
+    private void remember(String type, String scope, String key, String intent, String question, String answer, String company, String ats, Map<String, Object> data, String source, int confidence) {
+        Instant now = Instant.now();
+        String normalizedIntent = normalizeIntent(intent == null || intent.isBlank() ? question : intent);
+        String id = com.atlas.common.Slug.of(type + "-" + scope + "-" + key + "-" + normalizedIntent);
+        MemoryRecord existing = repository.memories().stream()
+                .filter(memory -> memory.id().equals(id))
+                .findFirst()
+                .orElse(null);
+        repository.saveMemory(new MemoryRecord(
+                id,
+                type,
+                scope,
+                key,
+                normalizedIntent,
+                question == null ? "" : question,
+                answer == null ? "" : answer,
+                company == null ? "" : company,
+                ats == null ? "" : ats,
+                data == null ? Map.of() : data,
+                existing == null ? confidence : clamp((existing.confidence() + confidence + 5) / 2, 1, 100),
+                existing == null ? 0 : existing.usageCount(),
+                source,
+                existing == null ? now : existing.createdAt(),
+                existing == null ? now : existing.lastUsed(),
+                now
+        ));
+    }
+
+    public String rememberedAnswer(String question, String company) {
+        String intent = normalizeIntent(question);
+        return repository.memories().stream()
+                .filter(memory -> memory.type().equals("approved_answer") || memory.type().equals("question"))
+                .filter(memory -> intent.equals(memory.intent()))
+                .filter(memory -> memory.answer() != null && !memory.answer().isBlank())
+                .sorted(Comparator.comparing(MemoryRecord::confidence).reversed().thenComparing(MemoryRecord::lastUsed).reversed())
+                .findFirst()
+                .map(memory -> {
+                    repository.saveMemory(new MemoryRecord(memory.id(), memory.type(), memory.scope(), memory.key(), memory.intent(), memory.question(), memory.answer(), memory.company(), memory.ats(), memory.data(), clamp(memory.confidence() + 2, 1, 100), memory.usageCount() + 1, memory.source(), memory.createdAt(), Instant.now(), Instant.now()));
+                    return memory.answer();
+                })
+                .orElse("");
+    }
+
+    private String normalizeIntent(String value) {
+        String text = value == null ? "" : value.toLowerCase(Locale.ROOT);
+        if (text.contains("sponsor") || text.contains("h1b") || text.contains("h-1b") || text.contains("visa")) return "sponsorship_required";
+        if (text.contains("authorization") || text.contains("authorized") || text.contains("citizen")) return "work_authorization";
+        if (text.contains("salary") || text.contains("compensation") || text.contains("pay")) return "salary_expectation";
+        if (text.contains("notice") || text.contains("start date") || text.contains("available")) return "notice_period";
+        if (text.contains("relocat")) return "relocation";
+        if (text.contains("travel")) return "travel";
+        if (text.contains("phone")) return "phone";
+        if (text.contains("address")) return "address";
+        if (text.contains("linkedin")) return "linkedin";
+        if (text.contains("github")) return "github";
+        if (text.contains("portfolio") || text.contains("website")) return "portfolio";
+        if (text.contains("name")) return "preferred_name";
+        return com.atlas.common.Slug.of(text);
+    }
+
+    private String blank(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private CareerLearningInsight insight(String company, List<ApplicationHistoryRecord> records) {

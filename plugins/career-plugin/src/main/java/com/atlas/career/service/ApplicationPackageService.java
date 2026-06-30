@@ -9,6 +9,7 @@ import com.atlas.career.domain.AnswerTrainingRule;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
+import com.atlas.career.domain.MemoryRecord;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -63,10 +64,10 @@ public class ApplicationPackageService {
         MasterResume masterResume = repository.masterResume();
         GeneratedApplicationDraft draft = draft(job, masterResume);
         List<ApplicationQuestionAnswer> answers = List.of(
-                new ApplicationQuestionAnswer("Tell me about yourself.", draft.answer("tellMeAboutYourself", professionalSummary(job)), "Generated from the Master Resume and job description.", true),
-                new ApplicationQuestionAnswer("Why this company?", draft.answer("whyThisCompany", "I am interested in " + job.company() + " because the role aligns with my backend engineering strengths and the company's hiring needs. I would review company-specific details before submitting."), "Draft requiring company research review.", true),
-                new ApplicationQuestionAnswer("Work authorization", authorizationAnswer(job), "Generated from visa intelligence.", true),
-                new ApplicationQuestionAnswer("Salary expectations", draft.answer("salaryExpectations", "Open to a competitive market-aligned package based on scope, level, and total compensation."), "Reusable saved answer.", true)
+                new ApplicationQuestionAnswer("Tell me about yourself.", rememberedAnswer("Tell me about yourself.", draft.answer("tellMeAboutYourself", professionalSummary(job))), "Generated from memory, Master Resume, and job description.", true),
+                new ApplicationQuestionAnswer("Why this company?", rememberedAnswer("Why this company?", draft.answer("whyThisCompany", "I am interested in " + job.company() + " because the role aligns with my backend engineering strengths and the company's hiring needs. I would review company-specific details before submitting.")), "Draft requiring company research review.", true),
+                new ApplicationQuestionAnswer("Work authorization", rememberedAnswer("Work authorization", authorizationAnswer(job)), "Generated from memory and visa intelligence.", true),
+                new ApplicationQuestionAnswer("Salary expectations", rememberedAnswer("Salary expectations", draft.answer("salaryExpectations", "Open to a competitive market-aligned package based on scope, level, and total compensation.")), "Reusable saved answer.", true)
         );
         String recommendation = job.intelligence() == null ? "Review" : job.intelligence().recommendation().category().name();
         int confidence = job.intelligence() == null ? job.match().overallMatch() : job.intelligence().recommendation().confidence();
@@ -309,6 +310,38 @@ public class ApplicationPackageService {
             }
         }
         return false;
+    }
+
+    private String rememberedAnswer(String question, String fallback) {
+        String intent = normalizeIntent(question);
+        return repository.memories().stream()
+                .filter(memory -> memory.type().equals("approved_answer") || memory.type().equals("question"))
+                .filter(memory -> intent.equals(memory.intent()))
+                .filter(memory -> memory.answer() != null && !memory.answer().isBlank())
+                .sorted(java.util.Comparator.comparing(MemoryRecord::confidence).reversed().thenComparing(MemoryRecord::lastUsed).reversed())
+                .findFirst()
+                .map(memory -> {
+                    repository.saveMemory(new MemoryRecord(memory.id(), memory.type(), memory.scope(), memory.key(), memory.intent(), memory.question(), memory.answer(), memory.company(), memory.ats(), memory.data(), Math.min(100, memory.confidence() + 2), memory.usageCount() + 1, memory.source(), memory.createdAt(), Instant.now(), Instant.now()));
+                    return memory.answer();
+                })
+                .orElse(fallback);
+    }
+
+    private String normalizeIntent(String value) {
+        String text = value == null ? "" : value.toLowerCase(java.util.Locale.ROOT);
+        if (text.contains("sponsor") || text.contains("h1b") || text.contains("h-1b") || text.contains("visa")) return "sponsorship_required";
+        if (text.contains("authorization") || text.contains("authorized") || text.contains("citizen")) return "work_authorization";
+        if (text.contains("salary") || text.contains("compensation") || text.contains("pay")) return "salary_expectation";
+        if (text.contains("notice") || text.contains("start date") || text.contains("available")) return "notice_period";
+        if (text.contains("relocat")) return "relocation";
+        if (text.contains("travel")) return "travel";
+        if (text.contains("phone")) return "phone";
+        if (text.contains("address")) return "address";
+        if (text.contains("linkedin")) return "linkedin";
+        if (text.contains("github")) return "github";
+        if (text.contains("portfolio") || text.contains("website")) return "portfolio";
+        if (text.contains("name")) return "preferred_name";
+        return Slug.of(text);
     }
 
     public String reportMarkdown(JobRecord job, ApplicationPackage applicationPackage) {

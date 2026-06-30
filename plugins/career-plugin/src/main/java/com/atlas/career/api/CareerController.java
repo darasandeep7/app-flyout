@@ -10,11 +10,13 @@ import com.atlas.career.domain.CareerLearningInsight;
 import com.atlas.career.domain.JobDiscoveryResult;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
+import com.atlas.career.domain.MemoryRecord;
 import com.atlas.career.domain.UserProfile;
 import com.atlas.career.service.CareerWorkflow;
 import com.atlas.resume.ResumeHealth;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -87,6 +89,26 @@ public class CareerController {
     @GetMapping("/learning/insights")
     public List<CareerLearningInsight> learningInsights() {
         return workflow.learningInsights();
+    }
+
+    @GetMapping("/memory")
+    public List<MemoryRecord> memories() {
+        return workflow.memories();
+    }
+
+    @PostMapping("/memory")
+    public MemoryRecord saveMemory(@RequestBody MemoryRecord memory) {
+        return workflow.saveMemory(memory);
+    }
+
+    @DeleteMapping("/memory/{id}")
+    public void deleteMemory(@org.springframework.web.bind.annotation.PathVariable String id) {
+        workflow.deleteMemory(id);
+    }
+
+    @PostMapping("/memory/import")
+    public List<MemoryRecord> importMemories(@RequestBody List<MemoryRecord> memories) {
+        return workflow.importMemories(memories);
     }
 
     @GetMapping("/preferences")

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-type NavKey = "career" | "dashboard" | "property" | "playground" | "projects" | "settings" | "logs";
+type NavKey = "career" | "memory" | "dashboard" | "property" | "playground" | "projects" | "settings" | "logs";
 
 type CareerDashboard = {
   trackedCompanies: number;
@@ -223,10 +223,30 @@ type CareerLearningInsight = {
   recommendation: string;
 };
 
+type MemoryRecord = {
+  id: string;
+  type: string;
+  scope: string;
+  key: string;
+  intent: string;
+  question: string;
+  answer: string;
+  company: string;
+  ats: string;
+  data: Record<string, unknown>;
+  confidence: number;
+  usageCount: number;
+  source: string;
+  createdAt: string;
+  lastUsed: string;
+  updatedAt: string;
+};
+
 function App() {
   const [active, setActive] = useState<NavKey>("career");
   const nav = [
     ["career", BriefcaseBusiness, "Career"],
+    ["memory", BrainCircuit, "Memory"],
     ["dashboard", Bot, "Core"],
     ["property", Boxes, "Property"],
     ["playground", BrainCircuit, "Playground"],
@@ -258,6 +278,7 @@ function App() {
       </aside>
       <section className="ml-64 min-h-screen p-8">
         {active === "career" && <Career />}
+        {active === "memory" && <Memory />}
         {active === "dashboard" && <Dashboard />}
         {active === "property" && <Property />}
         {active === "playground" && <Playground />}
@@ -959,6 +980,129 @@ function Dashboard() {
             <p className="mt-2 text-sm text-zinc-400">Connected to local Atlas services.</p>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function Memory() {
+  const [memories, setMemories] = useState<MemoryRecord[]>([]);
+  const [selected, setSelected] = useState<MemoryRecord | null>(null);
+  const [importText, setImportText] = useState("");
+  const [status, setStatus] = useState("Loading memory...");
+
+  async function loadMemory() {
+    const response = await fetch("/api/plugins/career/memory");
+    const data = await response.json();
+    setMemories(data);
+    setStatus(`Loaded ${data.length} memory records`);
+  }
+
+  useEffect(() => {
+    loadMemory().catch((error) => setStatus(`Memory unavailable: ${error}`));
+  }, []);
+
+  async function saveMemory() {
+    if (!selected) return;
+    await fetch("/api/plugins/career/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(selected)
+    });
+    await loadMemory();
+    setStatus("Memory saved");
+  }
+
+  async function deleteMemory(id: string) {
+    await fetch(`/api/plugins/career/memory/${id}`, { method: "DELETE" });
+    setSelected(null);
+    await loadMemory();
+    setStatus("Memory deleted");
+  }
+
+  async function importMemory() {
+    const parsed = JSON.parse(importText);
+    const response = await fetch("/api/plugins/career/memory/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(parsed)
+    });
+    setMemories(await response.json());
+    setImportText("");
+    setStatus("Memory imported");
+  }
+
+  const exportText = JSON.stringify(memories, null, 2);
+  const groups = ["question", "approved_answer", "company_memory", "ats_memory", "workflow_memory", "note"];
+
+  return (
+    <div className="space-y-6">
+      <header className="flex items-start justify-between gap-6">
+        <div>
+          <h2 className="flex items-center gap-3 text-3xl font-semibold"><BrainCircuit />Memory</h2>
+          <p className="mt-2 text-zinc-400">Local learning used to avoid asking and solving the same thing twice.</p>
+        </div>
+        <div className="rounded border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</div>
+      </header>
+
+      <div className="grid grid-cols-6 gap-3">
+        {groups.map((group) => <Metric key={group} label={group.replace("_", " ")} value={memories.filter((item) => item.type === group).length} />)}
+      </div>
+
+      <div className="grid grid-cols-[1fr_1fr] gap-5">
+        <section className="panel space-y-3">
+          <h3 className="text-lg font-semibold">Knowledge Explorer</h3>
+          <div className="max-h-[42rem] space-y-2 overflow-auto">
+            {memories.map((memory) => (
+              <button className="w-full rounded border border-zinc-800 bg-zinc-950 p-3 text-left" key={memory.id} onClick={() => setSelected(memory)}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium">{memory.intent || memory.key}</span>
+                  <span className="text-xs text-cyan-300">{memory.type} · {memory.confidence}%</span>
+                </div>
+                <p className="mt-1 text-sm text-zinc-500">{memory.question || memory.company || memory.ats || memory.scope}</p>
+                <p className="mt-2 line-clamp-2 text-xs text-zinc-400">{memory.answer || JSON.stringify(memory.data)}</p>
+              </button>
+            ))}
+            {memories.length === 0 && <p className="text-sm text-zinc-500">No memory yet. Atlas learns from profile saves, reviewed answers, and browser execution.</p>}
+          </div>
+        </section>
+
+        <section className="panel space-y-3">
+          <h3 className="text-lg font-semibold">Edit Memory</h3>
+          {selected ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="field-label">Type<input className="input mt-1 w-full" value={selected.type} onChange={(event) => setSelected({ ...selected, type: event.target.value })} /></label>
+                <label className="field-label">Intent<input className="input mt-1 w-full" value={selected.intent} onChange={(event) => setSelected({ ...selected, intent: event.target.value })} /></label>
+                <label className="field-label">Company<input className="input mt-1 w-full" value={selected.company} onChange={(event) => setSelected({ ...selected, company: event.target.value })} /></label>
+                <label className="field-label">ATS<input className="input mt-1 w-full" value={selected.ats} onChange={(event) => setSelected({ ...selected, ats: event.target.value })} /></label>
+                <label className="field-label">Confidence<input className="input mt-1 w-full" type="number" value={selected.confidence} onChange={(event) => setSelected({ ...selected, confidence: Number(event.target.value) })} /></label>
+                <label className="field-label">Usage<input className="input mt-1 w-full" type="number" value={selected.usageCount} onChange={(event) => setSelected({ ...selected, usageCount: Number(event.target.value) })} /></label>
+              </div>
+              <label className="field-label">Question<textarea className="input mt-1 min-h-20 w-full py-3" value={selected.question} onChange={(event) => setSelected({ ...selected, question: event.target.value })} /></label>
+              <label className="field-label">Answer<textarea className="input mt-1 min-h-32 w-full py-3" value={selected.answer} onChange={(event) => setSelected({ ...selected, answer: event.target.value })} /></label>
+              <label className="field-label">Data<textarea className="input mt-1 min-h-32 w-full py-3" value={JSON.stringify(selected.data ?? {}, null, 2)} onChange={(event) => setSelected({ ...selected, data: JSON.parse(event.target.value || "{}") })} /></label>
+              <div className="flex gap-3">
+                <button className="button" onClick={saveMemory} title="Save memory"><ClipboardCheck size={18} />Save</button>
+                <button className="button" onClick={() => deleteMemory(selected.id)} title="Delete memory"><ShieldCheck size={18} />Delete</button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-zinc-500">Select a memory record to edit.</p>
+          )}
+        </section>
+      </div>
+
+      <div className="grid grid-cols-2 gap-5">
+        <section className="panel space-y-3">
+          <h3 className="text-lg font-semibold">Export</h3>
+          <textarea className="input min-h-56 w-full py-3" readOnly value={exportText} />
+        </section>
+        <section className="panel space-y-3">
+          <h3 className="text-lg font-semibold">Import</h3>
+          <textarea className="input min-h-56 w-full py-3" value={importText} onChange={(event) => setImportText(event.target.value)} />
+          <button className="button" onClick={importMemory} disabled={!importText.trim()} title="Import memory JSON"><Play size={18} />Import</button>
+        </section>
       </div>
     </div>
   );

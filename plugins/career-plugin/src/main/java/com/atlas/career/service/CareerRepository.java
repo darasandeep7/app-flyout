@@ -7,6 +7,7 @@ import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
+import com.atlas.career.domain.MemoryRecord;
 import com.atlas.career.domain.UserProfile;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -62,6 +63,11 @@ public class CareerRepository {
 
     public List<AnswerTrainingRule> answerTrainingRules() {
         return readList(answerTrainingRulesPath(), new TypeReference<>() {
+        });
+    }
+
+    public List<MemoryRecord> memories() {
+        return readList(memoryPath(), new TypeReference<>() {
         });
     }
 
@@ -257,6 +263,25 @@ public class CareerRepository {
         return rule;
     }
 
+    public MemoryRecord saveMemory(MemoryRecord memory) {
+        List<MemoryRecord> memories = new ArrayList<>(memories());
+        memories.removeIf(existing -> existing.id().equals(memory.id()));
+        memories.add(memory);
+        memories.sort(Comparator.comparing(MemoryRecord::updatedAt).reversed());
+        write(memoryPath(), memories);
+        return memory;
+    }
+
+    public void deleteMemory(String id) {
+        List<MemoryRecord> memories = new ArrayList<>(memories());
+        memories.removeIf(memory -> memory.id().equals(id));
+        write(memoryPath(), memories);
+    }
+
+    public void replaceMemories(List<MemoryRecord> imported) {
+        write(memoryPath(), imported == null ? List.of() : imported);
+    }
+
     public void writeApplicationArtifact(ApplicationPackage applicationPackage, String relativePath, Object value) {
         Path path = careerFolder.resolve(relativePath).normalize();
         if (!path.startsWith(careerFolder)) {
@@ -360,6 +385,10 @@ public class CareerRepository {
         return careerFolder.resolve("answers/training-rules.json");
     }
 
+    private Path memoryPath() {
+        return careerFolder.resolve("memory/memory.json");
+    }
+
     private Path preferencesPath() {
         return careerFolder.resolve("preferences/preferences.json");
     }
@@ -389,6 +418,7 @@ public class CareerRepository {
             Files.createDirectories(careerFolder.resolve("answers"));
             Files.createDirectories(careerFolder.resolve("reports"));
             Files.createDirectories(careerFolder.resolve("logs"));
+            Files.createDirectories(careerFolder.resolve("memory"));
             seedIfEmpty();
             importSeedCompanies();
         } catch (IOException ex) {
