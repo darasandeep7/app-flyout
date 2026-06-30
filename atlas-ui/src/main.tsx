@@ -99,6 +99,20 @@ type ApplicationPackage = {
   reportPath: string;
 };
 
+type ApplicationReview = {
+  resume: string;
+  coverLetter: string;
+  answers: ApplicationQuestionAnswer[];
+  applicationPackage: ApplicationPackage;
+};
+
+type ApplicationQuestionAnswer = {
+  question: string;
+  answer: string;
+  source: string;
+  editable: boolean;
+};
+
 type CareerPreferences = {
   preferredTitles: string[];
   preferredSkills: string[];
@@ -119,6 +133,25 @@ type MasterResume = {
   preferredSkills: string[];
   preferredKeywords: string[];
   versions: string[];
+  updatedAt: string;
+};
+
+type UserProfile = {
+  name: string;
+  email: string;
+  defaultPassword: string;
+  phone: string;
+  address: string;
+  linkedin: string;
+  github: string;
+  portfolio: string;
+  workAuthorization: string;
+  sponsorshipRequirement: string;
+  education: string;
+  employmentHistory: string;
+  resumePath: string;
+  coverLetterPath: string;
+  savedAnswers: string[];
   updatedAt: string;
 };
 
@@ -265,18 +298,34 @@ function Career() {
   const [visaRequired, setVisaRequired] = useState(true);
   const [dailyScanTime, setDailyScanTime] = useState("08:00");
   const [masterResume, setMasterResume] = useState<MasterResume | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [masterResumeContent, setMasterResumeContent] = useState("");
+  const [profileText, setProfileText] = useState({
+    name: "",
+    email: "",
+    defaultPassword: "",
+    phone: "",
+    address: "",
+    linkedin: "",
+    github: "",
+    portfolio: "",
+    workAuthorization: "",
+    sponsorshipRequirement: "",
+    education: "",
+    employmentHistory: ""
+  });
   const [resumeKeywords, setResumeKeywords] = useState("");
   const [companyImportText, setCompanyImportText] = useState("");
   const [scanResult, setScanResult] = useState<JobDiscoveryResult | null>(null);
   const [executionResult, setExecutionResult] = useState<ApplicationExecutionResult | null>(null);
+  const [applicationReview, setApplicationReview] = useState<ApplicationReview | null>(null);
   const [trainingPattern, setTrainingPattern] = useState("");
   const [trainingFormat, setTrainingFormat] = useState("");
   const [trainingExample, setTrainingExample] = useState("");
   const [status, setStatus] = useState("Loading Career Copilot...");
 
   async function load() {
-    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, answerTrainingResponse, learningResponse, preferenceResponse, masterResumeResponse, resumeHealthResponse] = await Promise.all([
+    const [dashboardResponse, briefingResponse, recommendationResponse, applicationResponse, historyResponse, answerTrainingResponse, learningResponse, preferenceResponse, masterResumeResponse, profileResponse, resumeHealthResponse] = await Promise.all([
       fetch("/api/plugins/career/dashboard"),
       fetch("/api/plugins/career/intelligence/daily-briefing"),
       fetch("/api/plugins/career/intelligence/recommendations"),
@@ -286,6 +335,7 @@ function Career() {
       fetch("/api/plugins/career/learning/insights"),
       fetch("/api/plugins/career/preferences"),
       fetch("/api/plugins/career/resume/master"),
+      fetch("/api/plugins/career/profile"),
       fetch("/api/plugins/career/resume/health")
     ]);
     setDashboard(await dashboardResponse.json());
@@ -302,6 +352,22 @@ function Career() {
     setMasterResume(loadedResume);
     setMasterResumeContent(loadedResume.content);
     setResumeKeywords(loadedResume.preferredKeywords.join(", "));
+    const loadedProfile = await profileResponse.json();
+    setUserProfile(loadedProfile);
+    setProfileText({
+      name: loadedProfile.name ?? "",
+      email: loadedProfile.email ?? "",
+      defaultPassword: loadedProfile.defaultPassword ?? "",
+      phone: loadedProfile.phone ?? "",
+      address: loadedProfile.address ?? "",
+      linkedin: loadedProfile.linkedin ?? "",
+      github: loadedProfile.github ?? "",
+      portfolio: loadedProfile.portfolio ?? "",
+      workAuthorization: loadedProfile.workAuthorization ?? "",
+      sponsorshipRequirement: loadedProfile.sponsorshipRequirement ?? "",
+      education: loadedProfile.education ?? "",
+      employmentHistory: loadedProfile.employmentHistory ?? ""
+    });
     setResumeHealth(await resumeHealthResponse.json());
     setStatus("Career Copilot ready");
   }
@@ -394,6 +460,28 @@ function Career() {
     await load();
   }
 
+  async function saveUserProfile() {
+    setStatus("Saving user profile...");
+    const response = await fetch("/api/plugins/career/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...profileText,
+        resumePath: userProfile?.resumePath ?? "",
+        coverLetterPath: userProfile?.coverLetterPath ?? "",
+        savedAnswers: userProfile?.savedAnswers ?? [],
+        updatedAt: userProfile?.updatedAt ?? new Date().toISOString()
+      })
+    });
+    const saved = await response.json();
+    setUserProfile(saved);
+    setStatus("User profile saved");
+  }
+
+  function setProfileField(key: keyof typeof profileText, value: string) {
+    setProfileText({ ...profileText, [key]: value });
+  }
+
   async function saveAnswerTrainingRule() {
     setStatus("Saving answer training rule...");
     await fetch("/api/plugins/career/answer-training", {
@@ -418,6 +506,36 @@ function Career() {
     setStatus("Approving application for Browser Agent...");
     await fetch(`/api/plugins/career/applications/${applicationId}/approve`, { method: "POST" });
     await load();
+  }
+
+  async function reviewApplication(applicationId: string) {
+    setStatus("Loading application review...");
+    const response = await fetch(`/api/plugins/career/applications/${applicationId}/review`);
+    setApplicationReview(await response.json());
+    setStatus("Review loaded");
+  }
+
+  async function saveApplicationReview() {
+    if (!applicationReview) {
+      return;
+    }
+    setStatus("Saving application review...");
+    await fetch(`/api/plugins/career/applications/${applicationReview.applicationPackage.id}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(applicationReview)
+    });
+    await load();
+    setStatus("Application review saved");
+  }
+
+  function updateReviewAnswer(index: number, answer: string) {
+    if (!applicationReview) {
+      return;
+    }
+    const answers = [...applicationReview.answers];
+    answers[index] = { ...answers[index], answer };
+    setApplicationReview({ ...applicationReview, answers });
   }
 
   async function executeApplication(applicationId: string) {
@@ -606,9 +724,35 @@ function Career() {
               </div>
             ))}
           </div>
-        </section>
+      </section>
 
-        <section className="panel space-y-4">
+      <section className="panel space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold">User Profile</h3>
+            <p className="mt-1 text-sm text-zinc-500">The Browser Agent uses this local data for application forms and account creation.</p>
+          </div>
+          <button className="button" onClick={saveUserProfile} title="Save user profile"><FileText size={18} />Save Profile</button>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <label className="field-label">Name<input className="input mt-1 w-full" value={profileText.name} onChange={(event) => setProfileField("name", event.target.value)} /></label>
+          <label className="field-label">Email<input className="input mt-1 w-full" value={profileText.email} onChange={(event) => setProfileField("email", event.target.value)} /></label>
+          <label className="field-label">Default Password<input className="input mt-1 w-full" type="password" value={profileText.defaultPassword} onChange={(event) => setProfileField("defaultPassword", event.target.value)} /></label>
+          <label className="field-label">Phone<input className="input mt-1 w-full" value={profileText.phone} onChange={(event) => setProfileField("phone", event.target.value)} /></label>
+          <label className="field-label">Address<input className="input mt-1 w-full" value={profileText.address} onChange={(event) => setProfileField("address", event.target.value)} /></label>
+          <label className="field-label">LinkedIn<input className="input mt-1 w-full" value={profileText.linkedin} onChange={(event) => setProfileField("linkedin", event.target.value)} /></label>
+          <label className="field-label">GitHub<input className="input mt-1 w-full" value={profileText.github} onChange={(event) => setProfileField("github", event.target.value)} /></label>
+          <label className="field-label">Portfolio<input className="input mt-1 w-full" value={profileText.portfolio} onChange={(event) => setProfileField("portfolio", event.target.value)} /></label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="field-label">Work Authorization<textarea className="input mt-1 min-h-24 w-full py-3" value={profileText.workAuthorization} onChange={(event) => setProfileField("workAuthorization", event.target.value)} /></label>
+          <label className="field-label">Sponsorship Requirement<textarea className="input mt-1 min-h-24 w-full py-3" value={profileText.sponsorshipRequirement} onChange={(event) => setProfileField("sponsorshipRequirement", event.target.value)} /></label>
+          <label className="field-label">Education<textarea className="input mt-1 min-h-24 w-full py-3" value={profileText.education} onChange={(event) => setProfileField("education", event.target.value)} /></label>
+          <label className="field-label">Employment History<textarea className="input mt-1 min-h-24 w-full py-3" value={profileText.employmentHistory} onChange={(event) => setProfileField("employmentHistory", event.target.value)} /></label>
+        </div>
+      </section>
+
+      <section className="panel space-y-4">
           <h3 className="text-lg font-semibold">Analyze Job</h3>
           <div className="grid grid-cols-2 gap-3">
             <input className="input" value={jobCompany} onChange={(event) => setJobCompany(event.target.value)} placeholder="Company" />
@@ -661,7 +805,7 @@ function Career() {
       </div>
 
       <section className="panel">
-        <h3 className="mb-3 text-lg font-semibold">Application Review Queue</h3>
+        <h3 className="mb-3 text-lg font-semibold">Apply Queue</h3>
         <div className="space-y-3">
           {applications.map((application) => (
             <div className="rounded border border-zinc-800 bg-zinc-950 p-3" key={application.id}>
@@ -671,6 +815,7 @@ function Career() {
                   <div className="text-sm text-zinc-500">{application.company} - {application.status} - {application.recommendation}</div>
                 </div>
                 <div className="flex gap-2">
+                  <button className="button" onClick={() => reviewApplication(application.id)} title="Review application"><FileText size={18} />Review</button>
                   <button className="button" onClick={() => approveApplication(application.id)} title="Approve application"><Play size={18} />Approve</button>
                   <button className="button" onClick={() => executeApplication(application.id)} title="Run browser agent"><BriefcaseBusiness size={18} />Execute</button>
                   <button className="button" onClick={() => markApplication(application.id, "APPLIED", "Confirmed by Sandeep after browser review.")} title="Mark applied"><ClipboardCheck size={18} />Applied</button>
@@ -686,6 +831,29 @@ function Career() {
             </div>
           ))}
           {applications.length === 0 && <p className="text-sm text-zinc-500">No prepared applications yet. Analyze a good job, then prepare the queue.</p>}
+          {applicationReview && (
+            <div className="rounded border border-cyan-900 bg-zinc-950 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold">Review: {applicationReview.applicationPackage.title}</h4>
+                  <p className="text-sm text-zinc-500">{applicationReview.applicationPackage.company}</p>
+                </div>
+                <button className="button" onClick={saveApplicationReview} title="Save edited review"><ClipboardCheck size={18} />Save Review</button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="field-label">Resume Preview<textarea className="input mt-1 min-h-72 w-full py-3" value={applicationReview.resume} onChange={(event) => setApplicationReview({ ...applicationReview, resume: event.target.value })} /></label>
+                <label className="field-label">Cover Letter Preview<textarea className="input mt-1 min-h-72 w-full py-3" value={applicationReview.coverLetter} onChange={(event) => setApplicationReview({ ...applicationReview, coverLetter: event.target.value })} /></label>
+              </div>
+              <div className="mt-3 space-y-3">
+                {applicationReview.answers.map((answer, index) => (
+                  <label className="field-label block" key={answer.question}>
+                    {answer.question}
+                    <textarea className="input mt-1 min-h-24 w-full py-3" value={answer.answer} onChange={(event) => updateReviewAnswer(index, event.target.value)} />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           {executionResult && (
             <div className="rounded border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-400">
               <div className="text-zinc-200">{executionResult.status}: {executionResult.pauseReason}</div>

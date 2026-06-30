@@ -26,6 +26,41 @@ def text_for_answer(answers, label):
     return ""
 
 
+def profile_for_label(profile, label):
+    normalized = (label or "").lower()
+    name = profile.get("name") or ""
+    parts = name.split()
+    if "first" in normalized and "name" in normalized and parts:
+        return parts[0]
+    if "last" in normalized and "name" in normalized and len(parts) > 1:
+        return parts[-1]
+    if "full" in normalized and "name" in normalized:
+        return name
+    if normalized in ["name"] or "legal name" in normalized:
+        return name
+    if "email" in normalized:
+        return profile.get("email") or ""
+    if "phone" in normalized or "mobile" in normalized:
+        return profile.get("phone") or ""
+    if "address" in normalized or "street" in normalized:
+        return profile.get("address") or ""
+    if "linkedin" in normalized:
+        return profile.get("linkedin") or ""
+    if "github" in normalized:
+        return profile.get("github") or ""
+    if "portfolio" in normalized or "website" in normalized:
+        return profile.get("portfolio") or profile.get("github") or profile.get("linkedin") or ""
+    if "password" in normalized:
+        return profile.get("defaultPassword") or ""
+    if "education" in normalized or "school" in normalized or "degree" in normalized:
+        return profile.get("education") or ""
+    if "employment" in normalized or "experience" in normalized or "history" in normalized:
+        return profile.get("employmentHistory") or ""
+    if "authorization" in normalized or "sponsor" in normalized or "visa" in normalized:
+        return (profile.get("workAuthorization") or "") + " " + (profile.get("sponsorshipRequirement") or "")
+    return ""
+
+
 def best_option(label, options):
     normalized = (label or "").lower()
     for option in options:
@@ -41,6 +76,22 @@ def best_option(label, options):
         if "remote" in value:
             return option
     return options[0] if options else ""
+
+
+def choose_option(label, options, profile):
+    normalized = (label or "").lower()
+    profile_text = " ".join(str(v).lower() for v in (profile or {}).values())
+    for option in options:
+        value = (option or "").lower()
+        if not value or "select" in value:
+            continue
+        if value in profile_text:
+            return option
+        if "sponsor" in normalized and "yes" in value and "sponsor" in profile_text:
+            return option
+        if "authorized" in normalized and "yes" in value and "authorized" in profile_text:
+            return option
+    return best_option(label, options)
 
 
 def field_label(page, locator):
@@ -71,6 +122,7 @@ def has_human_gate(page):
 
 def run_application(payload_path: Path) -> int:
     payload = json.loads(payload_path.read_text())
+    profile = payload.get("userProfile") or {}
     output = Path(payload["outputFolder"])
     output.mkdir(parents=True, exist_ok=True)
     screenshots_dir = output / "screenshots"
@@ -109,6 +161,23 @@ def run_application(payload_path: Path) -> int:
                 actions.append("Clicked apply button")
                 page.wait_for_timeout(1500)
 
+            for login_text in ["Sign in", "Log in", "Create account", "Apply manually", "Continue"]:
+                try:
+                    button = page.get_by_role("button", name=re.compile(login_text, re.I))
+                    link = page.get_by_role("link", name=re.compile(login_text, re.I))
+                    if button.count() > 0:
+                        button.first.click(timeout=2500)
+                        actions.append(f"Clicked {login_text}")
+                        page.wait_for_timeout(1000)
+                        break
+                    if link.count() > 0:
+                        link.first.click(timeout=2500)
+                        actions.append(f"Clicked {login_text}")
+                        page.wait_for_timeout(1000)
+                        break
+                except Exception:
+                    pass
+
             gate = has_human_gate(page)
             if gate:
                 screenshot = screenshots_dir / "human-gate.png"
@@ -142,15 +211,15 @@ def run_application(payload_path: Path) -> int:
                     actions.append(f"Skipped file upload field: {exc}")
 
             answers = payload.get("answers") or []
-            for selector in ["textarea", "input[type='text']", "input[type='email']", "input[type='tel']"]:
+            for selector in ["textarea", "input[type='text']", "input[type='email']", "input[type='tel']", "input[type='password']", "input:not([type])"]:
                 fields = page.locator(selector)
-                for index in range(min(fields.count(), 40)):
+                for index in range(min(fields.count(), 80)):
                     field = fields.nth(index)
                     try:
                         if not field.is_visible(timeout=500) or field.input_value(timeout=500):
                             continue
                         label = field_label(page, field)
-                        answer = text_for_answer(answers, label)
+                        answer = profile_for_label(profile, label) or text_for_answer(answers, label)
                         if answer:
                             field.fill(answer[:3500], timeout=1500)
                             actions.append(f"Filled field: {label[:80]}")
@@ -165,7 +234,7 @@ def run_application(payload_path: Path) -> int:
                         continue
                     label = field_label(page, field)
                     options = field.locator("option").all_inner_texts(timeout=1000)
-                    choice = best_option(label, options)
+                    choice = choose_option(label, options, profile)
                     if choice:
                         field.select_option(label=choice, timeout=1500)
                         actions.append(f"Selected option: {label[:80]} -> {choice[:60]}")
@@ -185,6 +254,37 @@ def run_application(payload_path: Path) -> int:
                             actions.append(f"Checked field: {label[:80]}")
                     except Exception:
                         continue
+
+            for step in range(4):
+                gate = has_human_gate(page)
+                if gate:
+                    screenshot = screenshots_dir / f"human-gate-{step}.png"
+                    page.screenshot(path=str(screenshot), full_page=True)
+                    screenshots.append(str(screenshot))
+                    browser.close()
+                    write_result({
+                        "status": "PAUSED_FOR_HUMAN",
+                        "pauseReason": gate,
+                        "actions": actions,
+                        "screenshots": screenshots,
+                        "fallback": False,
+                        "error": None,
+                    })
+                    return 0
+                next_button = page.get_by_role("button", name=re.compile("next|continue|save and continue|review", re.I))
+                if next_button.count() == 0:
+                    break
+                screenshot = screenshots_dir / f"completed-page-{step + 1}.png"
+                page.screenshot(path=str(screenshot), full_page=True)
+                screenshots.append(str(screenshot))
+                try:
+                    next_button.first.click(timeout=3500)
+                    actions.append("Advanced to next application page")
+                    page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    page.wait_for_timeout(1000)
+                except Exception as exc:
+                    actions.append(f"Could not advance page: {exc}")
+                    break
 
             final_submit = page.get_by_role("button", name=re.compile("submit|send application|finish", re.I))
             screenshot = screenshots_dir / "before-final-review.png"

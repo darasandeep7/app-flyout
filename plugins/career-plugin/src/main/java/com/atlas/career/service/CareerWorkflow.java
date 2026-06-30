@@ -17,6 +17,7 @@ import com.atlas.career.domain.JobIntelligence;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
 import com.atlas.career.domain.MatchAssessment;
+import com.atlas.career.domain.UserProfile;
 import com.atlas.career.domain.VisaAssessment;
 import com.atlas.careerintelligence.CareerIntelligenceEngine;
 import com.atlas.company.CompanyIntelligenceService;
@@ -33,6 +34,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -143,6 +145,14 @@ public class CareerWorkflow {
         return repository.savePreferences(preferences);
     }
 
+    public UserProfile userProfile() {
+        return repository.userProfile();
+    }
+
+    public UserProfile saveUserProfile(UserProfile profile) {
+        return repository.saveUserProfile(profile);
+    }
+
     public MasterResume masterResume() {
         return repository.masterResume();
     }
@@ -240,6 +250,9 @@ public class CareerWorkflow {
             expired += repository.removeExpiredScannerJobs(company.id(), activeUrls);
             CompanyRecord updatedCompany = updateCompanyAfterScan(company, page.atsPlatform());
             for (JobDiscoveryService.DiscoveredJob discovered : page.jobs()) {
+                if (!scannerCandidate(discovered)) {
+                    continue;
+                }
                 analyzeJob(new AnalyzeJobRequest(
                         updatedCompany.name(),
                         updatedCompany.id(),
@@ -252,6 +265,10 @@ public class CareerWorkflow {
                 saved++;
             }
             messages.add(updatedCompany.name() + ": " + page.jobs().size() + " jobs found via " + page.atsPlatform());
+        }
+        List<ApplicationPackage> prepared = runDailyPreparation();
+        if (!prepared.isEmpty()) {
+            messages.add("Prepared " + prepared.size() + " application packages for the Apply Queue.");
         }
         JobDiscoveryResult result = new JobDiscoveryResult(Instant.now(), companies.size(), found, saved, expired, messages);
         repository.appendLog("job-discovery-last-run.json", result);
@@ -361,6 +378,52 @@ public class CareerWorkflow {
                 .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
     }
 
+    public ApplicationReview applicationReview(String applicationId) {
+        ApplicationPackage applicationPackage = repository.applications().stream()
+                .filter(item -> item.id().equals(applicationId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
+        String folder = "applications/" + applicationPackage.id();
+        return new ApplicationReview(
+                readText(folder + "/resume.md"),
+                readText(folder + "/cover-letter.md"),
+                applicationPackage.answers(),
+                applicationPackage
+        );
+    }
+
+    public ApplicationPackage saveApplicationReview(String applicationId, ApplicationReview review) {
+        ApplicationPackage applicationPackage = repository.applications().stream()
+                .filter(item -> item.id().equals(applicationId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Application package not found: " + applicationId));
+        String folder = "applications/" + applicationPackage.id();
+        repository.writeApplicationText(applicationPackage, folder + "/resume.md", review.resume());
+        repository.writeApplicationBytes(applicationPackage, applicationPackage.resumePath(), pdf(review.resume()));
+        repository.writeApplicationBytes(applicationPackage, folder + "/resume.docx", docx(review.resume()));
+        repository.writeApplicationText(applicationPackage, folder + "/cover-letter.md", review.coverLetter());
+        repository.writeApplicationBytes(applicationPackage, applicationPackage.coverLetterPath(), pdf(review.coverLetter()));
+        repository.writeApplicationBytes(applicationPackage, folder + "/cover-letter.docx", docx(review.coverLetter()));
+        repository.writeApplicationArtifact(applicationPackage, applicationPackage.answersPath(), review.answers());
+        return repository.saveApplication(new ApplicationPackage(
+                applicationPackage.id(),
+                applicationPackage.jobId(),
+                applicationPackage.company(),
+                applicationPackage.title(),
+                "REVIEWED",
+                applicationPackage.recommendationConfidence(),
+                applicationPackage.recommendation(),
+                applicationPackage.resumeVersion(),
+                applicationPackage.resumePath(),
+                applicationPackage.coverLetterPath(),
+                applicationPackage.answersPath(),
+                applicationPackage.reportPath(),
+                review.answers(),
+                applicationPackage.createdAt(),
+                Instant.now()
+        ));
+    }
+
     public ApplicationExecutionResult executeApplication(String applicationId) {
         ApplicationPackage applicationPackage = repository.applications().stream()
                 .filter(item -> item.id().equals(applicationId))
@@ -378,7 +441,8 @@ public class CareerWorkflow {
                 repository.resolveCareerPath(applicationPackage.coverLetterPath()),
                 applicationPackage.answers().stream()
                         .map(answer -> new BrowserApplicationRequest.QuestionAnswer(answer.question(), answer.answer()))
-                        .toList()
+                        .toList(),
+                profileMap(repository.userProfile())
         ));
         return saveExecution(applicationPackage, result.status(), result.pauseReason(), result.actions(), result.screenshots(), result.fallback(), result.error());
     }
@@ -466,6 +530,15 @@ public class CareerWorkflow {
         return execution;
     }
 
+    private String readText(String relativePath) {
+        try {
+            java.nio.file.Path path = repository.resolveCareerPath(relativePath);
+            return Files.exists(path) ? Files.readString(path) : "";
+        } catch (Exception ex) {
+            return "";
+        }
+    }
+
     private String normalizeApplicationStatus(String status) {
         if (status == null || status.isBlank()) {
             return "NEEDS_REVIEW";
@@ -528,11 +601,49 @@ public class CareerWorkflow {
                         && job.applicationStatus().toLowerCase().contains("applied"));
     }
 
+    private boolean scannerCandidate(JobDiscoveryService.DiscoveredJob job) {
+        CareerPreferences preferences = repository.preferences();
+        String text = ((job.title() == null ? "" : job.title()) + "\n" + (job.description() == null ? "" : job.description())).toLowerCase();
+        if (text.contains("intern") || text.contains("internship") || text.contains("university grad") || text.contains("new grad")) {
+            return false;
+        }
+        boolean staffAllowed = preferences.preferredTitles().stream().anyMatch(title -> title.toLowerCase().contains("principal") || title.toLowerCase().contains("staff"));
+        if (!staffAllowed && (text.contains("principal") || text.contains("director") || text.contains("vp ") || text.contains("executive"))) {
+            return false;
+        }
+        boolean titleMatch = preferences.preferredTitles().stream()
+                .map(title -> title.toLowerCase().replace("senior", "").replace("lead", "").trim())
+                .filter(title -> title.length() >= 4)
+                .anyMatch(text::contains);
+        boolean skillMatch = preferences.preferredSkills().stream()
+                .map(String::toLowerCase)
+                .filter(skill -> skill.length() >= 3)
+                .anyMatch(text::contains);
+        return titleMatch || skillMatch || text.contains("backend") || text.contains("spring") || text.contains("java") || text.contains("microservice");
+    }
+
     private boolean containsIgnoreCase(List<String> values, String candidate) {
         if (values == null || candidate == null) {
             return false;
         }
         return values.stream().anyMatch(value -> candidate.equalsIgnoreCase(value));
+    }
+
+    private java.util.Map<String, String> profileMap(UserProfile profile) {
+        return java.util.Map.ofEntries(
+                java.util.Map.entry("name", profile.name()),
+                java.util.Map.entry("email", profile.email()),
+                java.util.Map.entry("defaultPassword", profile.defaultPassword()),
+                java.util.Map.entry("phone", profile.phone()),
+                java.util.Map.entry("address", profile.address()),
+                java.util.Map.entry("linkedin", profile.linkedin()),
+                java.util.Map.entry("github", profile.github()),
+                java.util.Map.entry("portfolio", profile.portfolio()),
+                java.util.Map.entry("workAuthorization", profile.workAuthorization()),
+                java.util.Map.entry("sponsorshipRequirement", profile.sponsorshipRequirement()),
+                java.util.Map.entry("education", profile.education()),
+                java.util.Map.entry("employmentHistory", profile.employmentHistory())
+        );
     }
 
     public boolean fieldRelevant(JobRecord job) {
@@ -678,5 +789,8 @@ public class CareerWorkflow {
 
     private String xml(String value) {
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    public record ApplicationReview(String resume, String coverLetter, List<com.atlas.career.domain.ApplicationQuestionAnswer> answers, ApplicationPackage applicationPackage) {
     }
 }

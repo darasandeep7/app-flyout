@@ -10,6 +10,7 @@ import com.atlas.career.domain.CareerLearningInsight;
 import com.atlas.career.domain.JobDiscoveryResult;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
+import com.atlas.career.domain.UserProfile;
 import com.atlas.career.service.CareerWorkflow;
 import com.atlas.resume.ResumeHealth;
 import java.util.List;
@@ -98,6 +99,16 @@ public class CareerController {
         return workflow.savePreferences(preferences);
     }
 
+    @GetMapping("/profile")
+    public UserProfile userProfile() {
+        return workflow.userProfile();
+    }
+
+    @PostMapping("/profile")
+    public UserProfile saveUserProfile(@RequestBody UserProfile profile) {
+        return workflow.saveUserProfile(profile);
+    }
+
     @GetMapping("/resume/master")
     public MasterResume masterResume() {
         return workflow.masterResume();
@@ -121,6 +132,16 @@ public class CareerController {
     @PostMapping("/applications/{applicationId}/approve")
     public ApplicationPackage approveApplication(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
         return workflow.approveApplication(applicationId);
+    }
+
+    @GetMapping("/applications/{applicationId}/review")
+    public CareerWorkflow.ApplicationReview applicationReview(@org.springframework.web.bind.annotation.PathVariable String applicationId) {
+        return workflow.applicationReview(applicationId);
+    }
+
+    @PostMapping("/applications/{applicationId}/review")
+    public ApplicationPackage saveApplicationReview(@org.springframework.web.bind.annotation.PathVariable String applicationId, @RequestBody CareerWorkflow.ApplicationReview review) {
+        return workflow.saveApplicationReview(applicationId, review);
     }
 
     @PostMapping("/applications/{applicationId}/execute")

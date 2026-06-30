@@ -7,6 +7,7 @@ import com.atlas.career.domain.ApplicationPackage;
 import com.atlas.career.domain.CareerPreferences;
 import com.atlas.career.domain.JobRecord;
 import com.atlas.career.domain.MasterResume;
+import com.atlas.career.domain.UserProfile;
 import com.atlas.common.Slug;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -75,6 +76,60 @@ public class CareerRepository {
         } catch (IOException ex) {
             throw new IllegalStateException("Could not read " + preferencesPath(), ex);
         }
+    }
+
+    public UserProfile userProfile() {
+        if (Files.notExists(userProfilePath())) {
+            UserProfile empty = UserProfile.empty();
+            write(userProfilePath(), empty);
+            return empty;
+        }
+        try {
+            UserProfile saved = objectMapper.readValue(userProfilePath().toFile(), UserProfile.class);
+            return new UserProfile(
+                    blank(saved.name()),
+                    blank(saved.email()),
+                    blank(saved.defaultPassword()),
+                    blank(saved.phone()),
+                    blank(saved.address()),
+                    blank(saved.linkedin()),
+                    blank(saved.github()),
+                    blank(saved.portfolio()),
+                    blank(saved.workAuthorization()),
+                    blank(saved.sponsorshipRequirement()),
+                    blank(saved.education()),
+                    blank(saved.employmentHistory()),
+                    blank(saved.resumePath()),
+                    blank(saved.coverLetterPath()),
+                    listOrEmpty(saved.savedAnswers()),
+                    saved.updatedAt() == null ? Instant.EPOCH : saved.updatedAt()
+            );
+        } catch (IOException ex) {
+            throw new IllegalStateException("Could not read " + userProfilePath(), ex);
+        }
+    }
+
+    public UserProfile saveUserProfile(UserProfile profile) {
+        UserProfile saved = new UserProfile(
+                blank(profile.name()),
+                blank(profile.email()),
+                blank(profile.defaultPassword()),
+                blank(profile.phone()),
+                blank(profile.address()),
+                blank(profile.linkedin()),
+                blank(profile.github()),
+                blank(profile.portfolio()),
+                blank(profile.workAuthorization()),
+                blank(profile.sponsorshipRequirement()),
+                blank(profile.education()),
+                blank(profile.employmentHistory()),
+                blank(profile.resumePath()),
+                blank(profile.coverLetterPath()),
+                listOrEmpty(profile.savedAnswers()),
+                Instant.now()
+        );
+        write(userProfilePath(), saved);
+        return saved;
     }
 
     public CareerPreferences savePreferences(CareerPreferences preferences) {
@@ -309,6 +364,10 @@ public class CareerRepository {
         return careerFolder.resolve("preferences/preferences.json");
     }
 
+    private Path userProfilePath() {
+        return careerFolder.resolve("profile/user-profile.json");
+    }
+
     private Path masterResumePath() {
         return careerFolder.resolve("resumes/master-resume.json");
     }
@@ -323,6 +382,7 @@ public class CareerRepository {
             Files.createDirectories(careerFolder.resolve("jobs"));
             Files.createDirectories(careerFolder.resolve("applications"));
             Files.createDirectories(careerFolder.resolve("preferences"));
+            Files.createDirectories(careerFolder.resolve("profile"));
             Files.createDirectories(careerFolder.resolve("resumes"));
             Files.createDirectories(resumeVersionsFolder());
             Files.createDirectories(careerFolder.resolve("coverLetters"));
@@ -370,6 +430,7 @@ public class CareerRepository {
         write(jobsPath(), List.of());
         write(preferencesPath(), CareerPreferences.defaults());
         write(masterResumePath(), MasterResume.empty());
+        write(userProfilePath(), UserProfile.empty());
     }
 
     public int importSeedCompanies() {
@@ -485,6 +546,10 @@ public class CareerRepository {
 
     private List<String> listOrEmpty(List<String> values) {
         return values == null ? List.of() : values;
+    }
+
+    private String blank(String value) {
+        return value == null ? "" : value;
     }
 
     private String blankToDefault(String value, String fallback) {
